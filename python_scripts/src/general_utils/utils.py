@@ -162,42 +162,6 @@ def spearman(x, y):
 
 
 """
-compute_dRSA
-Starting from two data matrices (the neural data and the model) it computes the dRSA between the two.
-1) It computes the RDMs time-series
-2) It compares them one another through correlation or whatever other metric
-INPUT:
-- neural_data: np.ndarray (channels, time, trials) -> the neural data matrix already properly segmented
-- model_data: np.ndarray (channels, time, trials) -> the model data matrix already properly segmented, corresponding to the exact timepoints of the neurons
-- metric_RDM: str or function -> the distance metric used to compute the neural and model RDMs
-- metric_RDM_model: None, str or function -> if not None, the distance metric used to compute the model RDMs
-- metric_dRSA: str or function -> the similarity or dissimilarity metric used to compare the time series of RDMs
-
-OUTPUT:
-- dRSA_mat: np.ndarray (time, time) -> the matrix that compares the two time series of RDMs one another
-"""
-
-def compute_dRSA(neural_data, model_data, metric_RDM='correlation', metric_RDM_model=None, metric_dRSA=spearman):
-    RDMs_neu = []
-    RDMs_mod = []
-    for t in range(neural_data.shape[1]):
-        RDMn_t = create_RDM(neural_data[:,t,:], metric=metric_RDM)
-        if metric_RDM_model is None:
-            RDMm_t = create_RDM(model_data[:,t,:], metric=metric_RDM)
-        else:
-            RDMm_t = create_RDM(model_data[:,t,:], metric=metric_RDM_model)
-        # end if metric_RDM_model is None:
-        RDMs_neu.append(RDMn_t)
-        RDMs_mod.append(RDMm_t)
-    # end for t in range(neural_data.shape[1]):
-    RDMs_neu = np.stack(RDMs_neu, axis=1)
-    RDMs_mod = np.stack(RDMs_mod, axis=1)
-    dRSA_mat = autocorr_mat(RDMs_neu, RDMs_mod, metric=metric_dRSA)
-    return dRSA_mat
-# EOF
-
-
-"""
 get_lagplots
 From a correlation matrix, it returns the lagplot by averaging over the diagonals.
 INPUT:
@@ -301,22 +265,6 @@ def make_intervals(total: int, n: int):
         start = start+p
     return intervals
 
-
-def get_experiment_parameters():
-    with open("../experiments.yaml", "r") as f: # loads the yaml file with the experiment parameters
-        experiments = yaml.safe_load(f)
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--analyses_name", type=str) # receives the input name
-    args = parser.parse_args()
-    experiment_parameters = experiments[args.analyses_name]
-    experiment_parameters['analyses_name'] = args.analyses_name
-    return experiment_parameters
-# EOF
-
-def update_experiments_log(experiment_name):
-    with open("../experiments_log.txt", "a") as f:
-        f.write(f"\n{datetime.now().strftime('%H:%M:%S')} - {experiment_name}")
-# EOF
 
 
 """
@@ -441,38 +389,6 @@ def is_empty(x):
 # EOF
 
 
-"""
-get_layer_output_shape
-Computes the output shape (excluding batch size) of a specific layer 
-from a given PyTorch feature extractor when applied to a dummy input 
-image of size (1, 3, 224, 224).
-INPUT:
-- feature_extractor: torch.nn.Module -> A PyTorch model (typically a feature extractor created via torchvision.models.feature_extraction.create_feature_extractor)
-                                        which outputs a dictionary of intermediate activations.
-            
-- layer_name: str -> The name of the layer for which the output shape is desired. This must be one of the keys returned by the feature_extractor.
-
-OUTPUT:
-- tmp_shape: Tuple(Int) -> A tuple representing the shape of the output tensor from the specified layer, excluding the batch dimension. For example,
-                          (512, 7, 7) for a convolutional layer or (768,) for a transformer block.
-            
-Example Usage:
-    >>> from torchvision.models import resnet18
-    >>> from torchvision.models.feature_extraction import create_feature_extractor
-    >>> model = resnet18(pretrained=True).eval()
-    >>> feat_ext = create_feature_extractor(model, return_nodes=["layer1.0.relu_1"])
-    >>> shape = get_layer_out_shape(feat_ext, "layer1.0.relu_1")
-    >>> print(shape)
-    (64, 56, 56)
-"""
-def get_layer_output_shape(feature_extractor, layer_name, imsize=224):
-    device = get_device() 
-    with torch.no_grad():
-        in_proxy = torch.randn(1, 3, imsize, imsize).to(device)
-        tmp_shape = feature_extractor(in_proxy)[layer_name].shape[1:]
-    return tmp_shape
-# EOF 
-
 
 
 def get_device():
@@ -486,203 +402,6 @@ def get_device():
     return device
 # EOF
 
-
-"""
-get_relevant_output_layers
-Returns a list of layer names from a specified deep neural network model
-that are approximately aligned with regions in the primate visual cortex
-— namely V1, V4, and IT (inferotemporal cortex). These layers are selected
-to enable brain-model comparisons or neuroscientific analyses of model representations.
-
-INPUT:
-model_name (str): 
-    The name of the model architecture. Supported models include:
-    - 'resnet18'
-    - 'resnet50'
-    - 'vgg16'
-    - 'alexnet'
-    - 'vit_b_16'
-OUTPUT:
-    List[str]: 
-        A list of strings representing layer names in the model. These layers are chosen
-        based on their approximate correspondence to stages in the visual processing hierarchy
-        (e.g., early visual cortex V1, intermediate V4, and higher-level IT).
-
-Example Usage:
-    >>> layers = get_relevant_output_layers('resnet18')
-    >>> print(layers)
-    ['conv1', 'layer1.0.relu_1', 'layer1.1.relu_1', ..., 'avgpool']
-
-    >>> layers = get_relevant_output_layers('vit_b_16')
-    >>> print(layers)
-    ['conv_proj', 'encoder.layers.encoder_layer_0.add_1', ..., 'heads.head']
-"""
-def get_relevant_output_layers(model_name, pkg='torchvision'):
-    if model_name == 'resnet18':
-        return [
-            'conv1',                         
-            'layer1.0.relu_1',               
-            'layer1.1.relu_1',               
-            'layer2.0.relu_1',               
-            'layer2.1.relu_1',               
-            'layer3.0.relu_1',               
-            'layer3.1.relu_1',               
-            'layer4.0.relu_1',               
-            'layer4.1.relu_1',               
-            'avgpool'                        
-        ]
-    if model_name == 'resnet50':
-        return [
-            'layer1.0.conv3',
-            'layer1.1.conv3',
-            'layer1.0.downsample.0', 
-            'layer2.0.conv3',
-            'layer2.1.conv3',
-            'layer2.2.conv3',
-            'layer2.3.conv3',
-            'layer2.0.downsample.0', 
-            'layer3.0.conv3',
-            'layer3.1.conv3',
-            'layer3.2.conv3',
-            'layer3.3.conv3',
-            'layer3.4.conv3',
-            'layer3.5.conv3',
-            'layer3.0.downsample.0', 
-            'layer4.0.conv3',
-            'layer4.1.conv3',
-            'layer4.2.conv3',
-            'layer4.0.downsample.0', 
-        ]
-    if model_name == 'vgg16':
-        return [
-            'features.0',       # conv1_1 (V1)
-            'features.2',       # conv1_2
-            'features.5',       # conv2_2
-            'features.10',      # conv3_3
-            'features.12',      # conv4_1
-            'features.16',      # conv4_3
-            'features.19',      # conv5_1
-            'features.23',      # conv5_3
-            'features.30',      # final conv
-            'classifier.0'      # first FC layer
-        ]
-    if model_name == 'alexnet':
-        return [
-            'features.0',       # conv1
-            'features.4',       # conv2
-            'features.7',       # conv3
-            'features.9',       # conv4
-            'features.11',      # conv5
-            'classifier.2',     # fc6
-            'classifier.5'      # fc7
-        ]
-    if model_name == 'vit_b_16':
-        return [
-            'encoder.layers.encoder_layer_0.mlp',
-            'encoder.layers.encoder_layer_1.mlp',
-            'encoder.layers.encoder_layer_2.mlp',
-            'encoder.layers.encoder_layer_3.mlp',
-            'encoder.layers.encoder_layer_4.mlp',
-            'encoder.layers.encoder_layer_5.mlp',
-            'encoder.layers.encoder_layer_6.mlp',
-            'encoder.layers.encoder_layer_7.mlp',
-            'encoder.layers.encoder_layer_8.mlp',           
-            'encoder.layers.encoder_layer_9.mlp',           
-            'encoder.layers.encoder_layer_10.mlp',          
-            'encoder.layers.encoder_layer_11.mlp',          
-            'encoder.layers.encoder_layer_12.mlp',          
-            'encoder.layers.encoder_layer_13.mlp',          
-            'encoder.layers.encoder_layer_14.mlp',          
-            'encoder.layers.encoder_layer_15.mlp',          
-            'encoder.layers.encoder_layer_16.mlp',          
-            'encoder.layers.encoder_layer_17.mlp',          
-            'encoder.layers.encoder_layer_18.mlp',          
-            'encoder.layers.encoder_layer_19.mlp',          
-            'encoder.layers.encoder_layer_20.mlp',          
-            'encoder.layers.encoder_layer_21.mlp',          
-            'encoder.layers.encoder_layer_22.mlp',          
-            'encoder.layers.encoder_layer_23.mlp',          
-        ]
-    if model_name == 'vit_l_16':
-        if pkg=='torchvision':
-            return [
-                'encoder.layers.encoder_layer_0.mlp',
-                'encoder.layers.encoder_layer_1.mlp',
-                'encoder.layers.encoder_layer_2.mlp',
-                'encoder.layers.encoder_layer_3.mlp',
-                'encoder.layers.encoder_layer_4.mlp',
-                'encoder.layers.encoder_layer_5.mlp',
-                'encoder.layers.encoder_layer_6.mlp',
-                'encoder.layers.encoder_layer_7.mlp',
-                'encoder.layers.encoder_layer_8.mlp',           
-                'encoder.layers.encoder_layer_9.mlp',           
-                'encoder.layers.encoder_layer_10.mlp',          
-                'encoder.layers.encoder_layer_11.mlp',          
-                'encoder.layers.encoder_layer_12.mlp',          
-                'encoder.layers.encoder_layer_13.mlp',          
-                'encoder.layers.encoder_layer_14.mlp',          
-                'encoder.layers.encoder_layer_15.mlp',          
-                'encoder.layers.encoder_layer_16.mlp',          
-                'encoder.layers.encoder_layer_17.mlp',          
-                'encoder.layers.encoder_layer_18.mlp',          
-                'encoder.layers.encoder_layer_19.mlp',          
-                'encoder.layers.encoder_layer_20.mlp',          
-                'encoder.layers.encoder_layer_21.mlp',          
-                'encoder.layers.encoder_layer_22.mlp',          
-                'encoder.layers.encoder_layer_23.mlp',          
-            ]
-        elif pkg=='timm':
-            return [
-                'blocks.0.mlp.fc2',
-                'blocks.1.mlp.fc2',
-                'blocks.2.mlp.fc2',
-                'blocks.3.mlp.fc2',
-                'blocks.4.mlp.fc2',
-                'blocks.5.mlp.fc2',
-                'blocks.6.mlp.fc2',
-                'blocks.7.mlp.fc2',
-                'blocks.8.mlp.fc2',
-                'blocks.9.mlp.fc2',
-                'blocks.10.mlp.fc2',
-                'blocks.11.mlp.fc2',
-                'blocks.12.mlp.fc2',
-                'blocks.13.mlp.fc2',
-                'blocks.14.mlp.fc2',
-                'blocks.15.mlp.fc2',
-                'blocks.16.mlp.fc2',
-                'blocks.17.mlp.fc2',
-                'blocks.18.mlp.fc2',
-                'blocks.19.mlp.fc2',
-                'blocks.20.mlp.fc2',
-                'blocks.21.mlp.fc2',
-                'blocks.22.mlp.fc2',
-                'blocks.23.mlp.fc2',
-                   ]
-
-    if 'mobilenet_v3_large' in model_name:
-        return ["features.6.block.0", "features.15.block.0", "features.6.block.1", "features.15.block.1", "features.6.block.2", "features.15.block.2", "features.6.block.3", "features.15.block.3", "classifier.0", "classifier.3"]
-    raise ValueError(f"Model {model_name} not supported in `get_relevant_output_layers()`.")
-# EOF
-
-
-"""
-subsample_RDM
-Starting from a full RDM, it extracts a smaller RDM using a subset of indices.
-1) Selects the rows corresponding to the provided indices
-2) Selects the matching columns (same indices)
-3) Preserves the pairwise structure of the original RDM
-
-INPUT:
-- RDM: np.ndarray (N, N) -> full square representational dissimilarity matrix
-- indices: array-like (K,) -> indices of conditions/items to keep
-
-OUTPUT:
-- subsampled_RDM: np.ndarray (K, K) -> sub-RDM restricted to the selected indices
-"""
-def subsample_RDM(RDM, indices):
-    subsampled_RDM = RDM[np.ix_(indices, indices)]
-    return subsampled_RDM
-# EOF
 
 
 """
@@ -959,11 +678,25 @@ def smooth_signal(time_series, bins):
 # EOF
 
 
-def check_RDM_type(RDM_type: str):
-    if RDM_type not in ("signal", "model"):
-        raise ValueError(f"{RDM_type} is not a supported RDM_type, you can choose either 'signal' or 'model'")
-    # end if RDM_type != "signal" & RDM_type!="model":
+"""
+subsample_RDM
+Starting from a full RDM, it extracts a smaller RDM using a subset of indices.
+1) Selects the rows corresponding to the provided indices
+2) Selects the matching columns (same indices)
+3) Preserves the pairwise structure of the original RDM
+
+INPUT:
+- RDM: np.ndarray (N, N) -> full square representational dissimilarity matrix
+- indices: array-like (K,) -> indices of conditions/items to keep
+
+OUTPUT:
+- subsampled_RDM: np.ndarray (K, K) -> sub-RDM restricted to the selected indices
+"""
+def subsample_RDM(RDM, indices):
+    subsampled_RDM = RDM[np.ix_(indices, indices)]
+    return subsampled_RDM
 # EOF
+
 
 def check_attributes(obj, *attrs):
     missing = [
@@ -1226,219 +959,3 @@ class TimeSeries:
 # EOC
 
 
-"""
-RSA
-Implements Representational Similarity Analysis (RSA) between a signal RDM
-and a model RDM.
-
-Handles RDM construction, metric configuration, and similarity computation.
-
-INPUT:
-- signal_RDM_metric : str
-    Distance/similarity metric used to compute the signal RDM.
-- model_RDM_metric : str | None
-    Metric for model RDM (defaults to signal_RDM_metric).
-- RSA_metric : str
-    Similarity metric between RDMs ("correlation" or "spearman").
-- signal_RDM : np.ndarray | None
-    Precomputed signal RDM (vector form).
-- model_RDM : np.ndarray | None
-    Precomputed model RDM (vector form).
-
-ATTRIBUTES:
-- signal_RDM_metric, model_RDM_metric : str
-- RSA_metric : str
-- signal_RDM, model_RDM : np.ndarray
-- similarity : float (set after compute_RSA)
-
-NOTES:
-- RDMs are assumed to be in vector (condensed) form.
-- Attribute existence is validated via `check_attributes`.
-"""
-class RSA:
-    def __init__(
-            self, 
-            signal_RDM_metric: str, 
-            model_RDM_metric: str=None, 
-            RSA_metric: str='correlation', 
-            signal_RDM: np.ndarray = None, 
-            model_RDM: np.ndarray = None,
-            ):
-        self.signal_RDM_metric = signal_RDM_metric
-        if model_RDM_metric is None:
-            self.model_RDM_metric = signal_RDM_metric
-        else:
-            self.model_RDM_metric = model_RDM_metric
-        # end if model_RDM_metric is None:
-        self.RSA_metric = RSA_metric
-        self.signal_RDM = signal_RDM
-        self.model_RDM = model_RDM
-    # EOF
-    
-    # --- GETTERS ---
-    def get_RDM_metric(self, RDM_type):
-        check_RDM_type(RDM_type)
-        attr = f"{RDM_type}_RDM_metric"
-        return getattr(self, attr)
-    # EOF
-    def get_RSA_metric(self):
-        return self.RSA_metric
-    # EOF
-    def get_RDM(self, RDM_type: str):
-        check_RDM_type(RDM_type)
-        attr = f"{RDM_type}_RDM"
-        return getattr(self, attr)
-    # EOF
-
-    # --- SETTERS ---
-    def set_RDM_metrics(self, metric: str, RDM_type: str):
-        check_RDM_type(RDM_type)
-        attr = f"{RDM_type}_RDM_metric"
-        setattr(self, attr, metric)
-    # EOF
-    def set_RDM(self, RDM: np.ndarray, RDM_type: str):
-        check_RDM_type(RDM_type)
-        if RDM_type == "signal":
-            self.signal_RDM = RDM
-        elif RDM_type == "model":
-            self.model_RDM = RDM
-        else:
-            raise ValueError("Supported RDM types are 'signal' or 'model'")
-        # end if RDM_type == "signal":
-    # EOF
-    
-    # --- OTHER METHODS ---
-    def compute_RDM(self, data: np.ndarray, RDM_type: str):
-        check_RDM_type(RDM_type)
-        check_attributes(self, f"{RDM_type}_RDM_metric")
-        metric = getattr(self, f"{RDM_type}_RDM_metric")
-        attr = f"{RDM_type}_RDM"
-        RDM = create_RDM(data, metric)
-        setattr(self, attr, RDM)
-        return RDM
-    # EOF
-    def compute_both_RDMs(self, signal: np.ndarray, model: np.ndarray):
-        check_attributes(self, "signal_RDM_metric", "model_RDM_metric")
-        self.compute_RDM(signal, "signal")
-        self.compute_RDM(model, "model")
-    # EOF
-    def compute_RSA(self): 
-        check_attributes(self, "signal_RDM_metric", "model_RDM_metric", "RSA_metric", "signal_RDM", "model_RDM")
-        if self.RSA_metric == 'correlation':
-            similarity = np.corrcoef(self.signal_RDM, self.model_RDM)[0,1]
-        elif self.RSA_metric == 'spearman':
-            similarity = spearman(self.signal_RDM, self.model_RDM)
-        else:
-            raise TypeError(f"{self.RSA_metric} not supported.")
-        # if self.RSA_metric == 'correlation':
-        self.similarity = similarity
-        return similarity
-    # EOF
-    def squareform(self, RDM_type: str):
-        check_attributes(self, f"{RDM_type}_RDM")
-        target_RDM = self.get_RDM(RDM_type)
-        return squareform(target_RDM)
-    # EOF
-# EOC
-
-
-"""
-dRSA
-Extends RSA to time-resolved Representational Similarity Analysis.
-
-Computes RDMs at each time point and evaluates lagged or static RSA across time.
-
-INPUT:
-- signal_RDM_metric : str
-- model_RDM_metric : str | None
-- RSA_metric : str
-- signal_RDM_timeseries : TimeSeries | None
-    Time-resolved signal RDMs.
-- model_RDM_timeseries : TimeSeries | None
-    Time-resolved model RDMs.
-- model_RDM_static : np.ndarray | None
-    Static model RDM for time-resolved RSA.
-
-ATTRIBUTES:
-- signal_RDM_timeseries : TimeSeries
-- model_RDM_timeseries : TimeSeries
-- model_RDM_static : np.ndarray
-- dRSA_mat : np.ndarray
-- static_dRSA : TimeSeries
-
-NOTES:
-- TimeSeries objects are expected to iterate over vectorized RDMs.
-- Correlation-based static dRSA is vectorized; Spearman is loop-based.
-"""
-class dRSA(RSA):
-    def __init__(
-            self, 
-            signal_RDM_metric: str, 
-            model_RDM_metric: str=None, 
-            RSA_metric: str='correlation', 
-            signal_RDM_timeseries: TimeSeries = None, 
-            model_RDM_timeseries: TimeSeries = None,
-            model_RDM_static: np.ndarray = None,
-            ):
-        super().__init__(signal_RDM_metric, model_RDM_metric, RSA_metric)
-        self.signal_RDM_timeseries = signal_RDM_timeseries
-        self.model_RDM_timeseries = model_RDM_timeseries
-        self.model_RDM_static = model_RDM_static
-    # EOF
-
-    # --- GETTERS ---
-    def get_RDM_timeseries(self, RDM_type: str):
-        check_RDM_type(RDM_type)
-        attr = f"{RDM_type}_RDM_timeseries"
-        return getattr(self, attr)
-    # EOF
-    
-    # --- SETTERS ---
-    def set_RDM_timeseries(self, RDM_timeseries: TimeSeries, RDM_type: str):
-        check_RDM_type(RDM_type)
-        attr = f"{RDM_type}_RDM_timeseries"
-        setattr(self, attr, RDM_timeseries)
-    # EOF
-
-    # --- OTHER FUNCTIONS
-    def compute_RDM_timeseries(self, signal: TimeSeries, RDM_type: str):
-        check_RDM_type(RDM_type)
-        metric = getattr(self, f"{RDM_type}_RDM_metric")
-        signal_fs = signal.get_fs()
-        RDMs_list = []
-        for t in range(signal.array.shape[1]): 
-            RDM = create_RDM(
-                np.ascontiguousarray(signal.array[:,t,:]), 
-                metric
-            )
-            RDMs_list.append(RDM)
-        RDMs_list = TimeSeries(RDMs_list, signal_fs)
-        attr = f"{RDM_type}_RDM_timeseries"
-        setattr(self, attr, RDMs_list)
-    # EOF
-    def compute_both_RDM_timeseries(self, signal: TimeSeries, model: TimeSeries):
-        self.compute_RDM_timeseries(signal, "signal")
-        self.compute_RDM_timeseries(model, "model")
-    # EOF
-    def compute_dRSA(self):
-        check_attributes(self, "signal_RDM_timeseries", "model_RDM_timeseries")
-        self.dRSA_mat = self.signal_RDM_timeseries.lagged_corr(self.model_RDM_timeseries, self.RSA_metric)
-        return self.dRSA_mat
-    # EOF
-    def compute_static_dRSA(self):
-        check_attributes(self, "signal_RDM_timeseries", "model_RDM")
-        static_dRSA = []
-        if self.RSA_metric == 'correlation': 
-            for t in range(len(self.signal_RDM_timeseries)):
-                static_dRSA.append(np.corrcoef(self.signal_RDM_timeseries.array[t], self.model_RDM)[0,1])
-        elif self.RSA_metric == 'spearman':
-            for t in self.signal_RDM_timeseries:
-                static_dRSA.append(spearman(t, self.model_RDM))
-            # end for i_time in signal.shape[1]:
-        static_dRSA = np.array(static_dRSA)
-        # end if metric == 'correlation':
-        static_dRSA = TimeSeries(static_dRSA, self.signal_RDM_timeseries.fs)
-        self.static_dRSA = static_dRSA
-        return static_dRSA
-    # EOF
-# EOC
