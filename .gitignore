@@ -1,0 +1,13 @@
+.ipynb_checkpoints
+*psd
+*png
+*jpg
+*.pdf
+*asv
+__pycache__
+*pyc
+.DS_Store
+literature
+PrimateFace
+DeepGaze
+*pt
