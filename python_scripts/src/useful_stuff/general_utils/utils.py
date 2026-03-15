@@ -931,3 +931,73 @@ def get_lags(max_lag, symmetric=False):
     # end if symmetric:
     return lags_range
 # EOF
+
+
+"""
+shift_concatenate_xy
+Shifts temporally all the trials of two time-series x (model), y (neural signal) according to a lag tau. 
+INPUT:
+    - x: TimeSeries (features, timepoints, trials) -> regressor (i.e. model) time series 
+    - y: TimeSeries (features, timepoints, trials) -> signal (i.e. neurons) time series
+    - tau: int -> temporal lag
+        tau < 0 we are using x future to predict current y
+        tau = 0 we are using x present to predict current y
+        tau > 0 we are using x past to predict current y
+OUTPUT:
+    - x_shifted: np.ndarray ((overlapping timepoints * trials), features) -> regressor (i.e. model) time series. 
+                            overlapping timepoints = the timepoints that still have a correspondent in the other time series
+                            the different trials are vectorized in the 0th dimension in the format regression_obj wants
+    - y_shifted: np.ndarray ((overlapping timepoints * trials), features) -> signal (i.e. neurons) time series
+"""
+def shift_concatenate_xy(x, y, tau, transpose=True):
+    x_shifted_tot = []
+    y_shifted_tot = []
+    
+    for i_trial in range(x.get_array().shape[2]):
+        curr_x = x.get_array()[:,:,i_trial]
+        curr_y = y.get_array()[:,:,i_trial]
+        x_shifted, y_shifted = shift_xy(curr_x, curr_y, tau)
+        if transpose:
+            x_shifted = np.ascontiguousarray(x_shifted.T)
+            y_shifted = np.ascontiguousarray(y_shifted.T)
+        # end if transpose:
+        x_shifted_tot.append(x_shifted)
+        y_shifted_tot.append(y_shifted)
+    # end for i in range(data.shape[2]):
+    axis = 0 if transpose else 1 # concatenate along the rows if transpose, otherwise the columns -> result: 1st case) NxD; 2nd case) DxN
+    x_shifted_tot = np.concatenate(x_shifted_tot, axis=axis)
+    y_shifted_tot = np.concatenate(y_shifted_tot, axis=axis)
+    return x_shifted_tot, y_shifted_tot
+# EOF
+
+
+"""
+shift_xy
+Shifts temporally two time-series x (model), y (neural signal) according to a lag tau. 
+INPUT:
+    - x: np.ndarray (features, timepoints) -> regressor (i.e. model) time series 
+    - y: np.ndarray (features, timepoints) -> signal (i.e. neurons) time series
+    - tau: int -> temporal lag
+        tau < 0 we are using x future to predict current y
+        tau = 0 we are using x present to predict current y
+        tau > 0 we are using x past to predict current y
+OUTPUT:
+    - x_shifted: np.ndarray (features, overlapping timepoints) -> regressor (i.e. model) time series. 
+                            overlapping timepoints = the timepoints that still have a correspondent in the other time series
+    - y_shifted: np.ndarray (features, overlapping timepoints) -> signal (i.e. neurons) time series
+"""
+def shift_xy(x, y, tau):
+    if tau > 0:  # if positive lag
+        x_shifted = x[:,:-tau] # mod is shifted towards the right (so present neural is being compared with past model)
+        y_shifted = y[:,tau:]   
+    elif tau == 0:  # Handle L=0 case explicitly
+        x_shifted = x
+        y_shifted = y
+    else:  # tau < 0
+        x_shifted = x[:,-tau:] # mod is shifted towards the left (so present neural is being compared with future model)
+        y_shifted = y[:,:tau]
+    # if tau > 0:  # if positive lag
+    return x_shifted, y_shifted
+#EOF
+
+
