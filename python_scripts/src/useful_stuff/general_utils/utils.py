@@ -1009,3 +1009,9 @@ def shift_xy(x, y, tau):
 #EOF
 
 
+def softmax(x, T=1.0):
+    x = np.asarray(x)
+    x = x / T
+    e = np.exp(x - np.max(x))  # numerical stability
+    return e / e.sum()
+# EOF
