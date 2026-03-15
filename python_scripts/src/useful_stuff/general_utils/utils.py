@@ -403,6 +403,14 @@ def get_device():
 # EOF
 
 
+""" 
+load_npz_as_dict
+Loads the saved npz file as a dict 
+"""
+def load_npz_as_dict(path: str) -> dict[str, np.ndarray]:
+    with np.load(path, allow_pickle=False) as data:
+        return {k: data[k] for k in data.files}
+# EOF 
 
 """
 decode_matlab_strings

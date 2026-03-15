@@ -1,10 +1,12 @@
+import sys, os
 import numpy as np
 from sklearn.model_selection import BaseCrossValidator
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
+from sklearn.linear_model import LinearRegression, RidgeCV, MultiTaskLassoCV, MultiTaskElasticNetCV
 from sklearn.model_selection import KFold, LeaveOneOut
+from sklearn.metrics import r2_score
 
 sys.path.append("../..")
-from useful_stuff.general_utils import shift_concatenate_xy
+from useful_stuff.general_utils import shift_concatenate_xy, get_lags, TimeSeries
 
 """
 IdentitySplit
@@ -197,3 +199,506 @@ def static_lagged_linear_regression(x, y, regression_type='lr', alpha=0.0, cv_ty
     # end for L in range(-max_lag, max_lag):    
     return lr_list
 # EOF
+
+
+class linear_encoding:
+    """
+    __init__
+    Initializes the linear encoding model specifying regression type, cross-validation scheme and scoring method.
+
+    INPUT:
+        - regression_type: str -> type of regression model to use (e.g. ridge, lasso)
+        - cv_type: str -> type of cross-validation strategy
+        - alphas: np.ndarray(float) -> regularization parameters for regression
+        - score_type: str -> metric used to evaluate predictions ('r2' or 'corr')
+        - n_splits: int -> number of cross-validation folds
+        - shuffle: bool -> whether to shuffle samples before splitting
+        - **kwargs: dict -> additional parameters passed to the regression model
+
+    OUTPUT:
+        - None
+    """
+    def __init__(self, regression_type: str, cv_type: str, alphas: np.ndarray=np.logspace(-6, 3, 10), score_type: str='r2', n_splits: int=5, shuffle: bool=True, **kwargs):
+        self.regression_type = regression_type 
+        self.alphas = alphas
+        self.regression_obj = choose_regression_type(self.regression_type, alphas=self.alphas, **kwargs)
+        self.cv_type = cv_type
+        self.cv_obj = choose_CV_type(cv_type, n_splits=n_splits, shuffle=shuffle)
+        self.additional_args = kwargs
+        self.score_type = score_type
+    # EOF
+    # --- GETTERS ---
+    def get_regression_type(self):
+        return self.regression_type
+    # EOF
+    def get_regression_obj(self):
+        return self.regression_obj
+    # EOF
+    def get_alphas(self):
+        return self.alphas
+    # EOF
+    def get_cv_type(self):
+        return self.cv_type
+    # EOF
+    def get_cv_obj(self):
+        return self.cv_obj
+    # EOF
+    def get_weights(self):
+        return self.regression_obj.coef_
+    # EOF
+    def get_intercept(self):
+        return self.regression_obj.intercept_
+    # EOF
+    def get_score_vals(self):
+        return self.score_vals
+    # EOF
+    def get_score_type(self):
+        return self.score_type
+    # EOF
+    # --- SETTERS ---
+    def set_regression_type(self, regression_type: str, alphas=None, **kwargs):
+        self.regression_type = regression_type
+        if alphas is not None:
+            self.alphas = alphas
+        # end if alphas is not None:
+        if kwargs is not None:
+            self.additional_args = kwargs
+        # end if kwargs is not None:
+        self.regression_obj = choose_regression_type(self.regression_type, alphas=self.alphas, **self.additional_args)
+    # EOF
+    def set_regression_obj(self):
+        raise AttributeError("Pass through set_regression_type to set a new regression object")
+    # EOF
+    def set_alphas(self):
+        raise AttributeError("Pass through set_regression_type to set a new set of alphas")
+    # EOF
+    def set_cv_type(self, cv_type, n_splits=5, shuffle=True):
+        self.cv_type = cv_type
+        self.cv_obj = choose_CV_type(cv_type, n_splits=n_splits, shuffle=shuffle)
+    # EOF
+    def set_cv_obj(self):
+        raise AttributeError("Pass through set_cv_type to set a new cv_obj")
+    # EOF
+
+    # --- OTHER METHODS ---
+    """
+    fit
+    Fits the regression model to the training data.
+
+    INPUT:
+        - X_train: np.ndarray(float) -> (features x samples) or (samples x features)
+        - Y_train: np.ndarray(float) -> (outputs x samples) or (samples x outputs)
+        - transpose: bool -> if True transposes inputs to (samples x features)
+
+    OUTPUT:
+        - weights: np.ndarray(float) -> regression coefficients
+        - intercept: np.ndarray(float) or float -> intercept parameter
+    """
+    def fit(self, X_train: np.ndarray, Y_train: np.ndarray, transpose=True):
+        if transpose:
+            X_train = np.ascontiguousarray(X_train.T)
+            Y_train = np.ascontiguousarray(Y_train.T)
+        # end if transpose:
+        self.regression_obj.fit(X_train, Y_train)
+        return self.get_weights(), self.get_intercept()
+    # EOF
+    """
+    predict
+    Generates predictions from the fitted regression model.
+
+    INPUT:
+        - X: np.ndarray(float) -> input data
+        - transpose: bool -> whether to transpose input to (samples x features)
+        - transpose_output: bool -> whether to return predictions as (outputs x samples)
+
+    OUTPUT:
+        - y_hat: np.ndarray(float) -> predicted outputs
+    """
+    def predict(self, X: np.ndarray, transpose=True, transpose_output=True):
+        if transpose:
+            X = np.ascontiguousarray(X.T)
+        # end if transpose:
+        y_hat = self.regression_obj.predict(X)
+        if transpose_output:
+            y_hat = np.ascontiguousarray(y_hat.T)
+        # if transpose_output:
+        return y_hat
+    # EOF
+    """
+    score
+    Evaluates model predictions on a test dataset.
+
+    INPUT:
+        - X_test: np.ndarray(float) -> test input data
+        - Y_test: np.ndarray(float) -> ground truth outputs
+        - y_hat: np.ndarray(float) -> optional precomputed predictions
+        - transpose: bool -> whether to transpose inputs to (samples x features)
+        - transpose_prediction: bool -> whether to transpose predictions
+
+    OUTPUT:
+        - score: np.ndarray(float) -> prediction score for each output
+    """
+    def score(self, X_test: np.ndarray, Y_test: np.ndarray, y_hat=None, transpose=True, transpose_prediction=True):
+        if transpose:
+            X_test = np.ascontiguousarray(X_test.T)
+            Y_test = np.ascontiguousarray(Y_test.T)
+        # end if transpose:
+        if y_hat is None:
+            y_hat = self.predict(X_test, transpose=False, transpose_output=False)
+        else:
+            if transpose_prediction:
+                y_hat = np.ascontiguousarray(y_hat.T)
+            # end if transpose_prediction:
+        # end if y_hat is None:
+        if self.score_type=='r2':
+            score = r2_score(Y_test, y_hat, multioutput="raw_values")
+        elif self.score_type=="corr": 
+            score = evaluate_prediction_corr(Y_test, y_hat)
+        # end if score_type=='r2':
+        self.score_vals = score
+        return score
+    # EOF
+    """
+    crossvalidate
+    Performs cross-validation to evaluate model performance.
+
+    INPUT:
+        - X: np.ndarray(float) -> input data
+        - Y: np.ndarray(float) -> target outputs
+        - transpose: bool -> whether to transpose inputs to (samples x features)
+
+    OUTPUT:
+        - score: np.ndarray(float) -> average cross-validation score across folds
+    """
+    def crossvalidate(self, X, Y, transpose=True):
+        if transpose:
+            X = np.ascontiguousarray(X.T)
+            Y = np.ascontiguousarray(Y.T)
+        # end if transpose:
+        counter = 0
+        score = None
+    
+        for train_idx, test_idx in self.get_cv_obj().split(X):
+            X_train, Y_train = X[train_idx, :], Y[train_idx, :]
+            X_test, Y_test = X[test_idx, :], Y[test_idx, :]
+            self.fit(X_train, Y_train, transpose=False)
+            counter+=1
+            if score is None:
+                score = self.score(X_test, Y_test, transpose=False)
+            else:
+                score += self.score(X_test, Y_test, transpose=False)
+            # end if score is None:
+        # end for train_idx, test_idx in self.get_cv_obj().split(X):
+        score = score/counter
+        self.score_vals = score
+        return score
+    # EOC
+
+
+class dyn_linear_encoding(linear_encoding):
+    """
+    __init__
+    Initializes the dynamic linear encoding model with lag parameters and inherits regression settings.
+
+    INPUT:
+        - regression_type: str -> type of regression (e.g. ridge, lasso)
+        - cv_type: str -> cross-validation type
+        - max_lag: int -> maximum lag for dynamic modeling
+        - symmetric: bool -> whether to use symmetric lag range
+        - alphas: np.ndarray(float) -> regularization parameters
+        - score_type: str -> scoring metric ('r2' or 'corr')
+        - n_splits: int -> cross-validation folds
+        - shuffle: bool -> whether to shuffle samples
+        - **kwargs: dict -> additional regression arguments
+
+    OUTPUT:
+        - None
+    """
+    def __init__(self, regression_type, cv_type, max_lag: int, symmetric: bool=False, alphas = np.logspace(-6, 3, 10), score_type = 'r2', n_splits = 5, shuffle = True, **kwargs):
+        super().__init__(regression_type, cv_type, alphas, score_type, n_splits, shuffle, **kwargs)
+        self.max_lag = max_lag
+        self.symmetric = symmetric
+    # EOF
+    # --- GETTERS ---
+    def get_max_lag(self):
+        return self.max_lag
+    # EOF
+    def get_symmetric(self):
+        return self.symmetric
+    # EOF
+    def get_weights_dyn(self):
+        return self.weights_dyn
+    # EOF
+    def get_intercepts_dyn(self):
+        return self.intercepts_dyn
+    # EOF
+    # --- SETTERS ---
+    def set_max_lag(self, max_lag: int):
+        self.max_lag = max_lag
+    # EOF
+    def set_symmetric(self, symmetric: bool):
+        self.symmetric = symmetric
+    # EOF
+    def set_weights_dyn(self, weights: TimeSeries):
+        self.weights_dyn = weights
+    # EOF
+    def set_intercepts_dyn(self, intercepts: TimeSeries):
+        self.intercepts_dyn = intercepts
+    # EOF
+
+    # --- OTHER METHODS ---
+    # --- STATIC-DYNAMIC (= model is static, signal is dynamic)
+    """
+    fit_static_dyn
+    Fits regression model on static features and dynamic outputs.
+
+    INPUT:
+        - X_train: np.ndarray(float) -> static features
+        - Y_train: TimeSeries -> dynamic outputs (features x time)
+        - transpose: bool -> whether to transpose input arrays
+
+    OUTPUT:
+        - weights_dyn: TimeSeries -> fitted regression weights per timepoint
+        - intercepts_dyn: TimeSeries -> fitted intercepts per timepoint
+    """
+    def fit_static_dyn(self, X_train: np.ndarray, Y_train: TimeSeries, transpose=True):
+        if transpose:
+            X_train = np.ascontiguousarray(X_train.T)
+        # end if transpose:
+        weights_dyn = []
+        intercepts_dyn = []
+        for y_t in Y_train:
+            if transpose:
+                y_t = np.ascontiguousarray(y_t.T)
+            # end if transpose:
+            w_t, w0_t = self.fit(X_train, y_t, transpose=False)
+            weights_dyn.append(w_t)
+            intercepts_dyn.append(w0_t)
+        weights_dyn = TimeSeries(weights_dyn, Y_train.get_fs())
+        intercepts_dyn = TimeSeries(intercepts_dyn, Y_train.get_fs())
+        self.weights_dyn = weights_dyn
+        self.intercepts_dyn = intercepts_dyn
+        return weights_dyn, intercepts_dyn
+    # EOF
+    """
+    predict_static_dyn
+    Generates predictions using static-dynamic fitted weights.
+
+    INPUT:
+        - X: np.ndarray(float) -> static features
+        - transpose: bool -> whether to transpose input
+        - transpose_output: bool -> whether to transpose output to (outputs x time)
+
+    OUTPUT:
+        - y_hat_dyn: TimeSeries -> predicted dynamic outputs
+    """
+    def predict_static_dyn(self, X: np.ndarray, transpose=True, transpose_output=True):
+        y_hat_dyn = []
+        if transpose:
+            X = X.T
+        # end if transpose
+        for w, i in zip(self.get_weights_dyn(), self.get_intercepts_dyn()):
+            # if len(w.shape) == 2: # transpose in case you had to predict multiple outputs
+            w = w.T
+            # end if len(w.shape) == 2:
+            y_hat =  X @ w + i
+            if transpose_output:
+                y_hat = y_hat.T
+            # end if transpose_output:
+            y_hat_dyn.append(y_hat)
+        # end for w, i in zip(self.get_weights_dyn(), self.get_weights_dyn()):
+        y_hat_dyn = TimeSeries(y_hat_dyn, self.get_weights_dyn().get_fs())
+        return y_hat_dyn
+    # EOF
+    """
+    score_static_dyn
+    Evaluates static-dynamic predictions using R^2 or correlation.
+
+    INPUT:
+        - X_test: np.ndarray(float) -> test features
+        - Y_test: TimeSeries -> ground truth outputs
+        - y_hat: TimeSeries -> optional precomputed predictions
+        - transpose: bool -> whether to transpose inputs
+        - transpose_prediction: bool -> whether to transpose predictions
+
+    OUTPUT:
+        - score_dyn: np.ndarray(float) -> score per timepoint
+    """
+    def score_static_dyn(self, X_test: np.ndarray, Y_test: TimeSeries, y_hat=None, transpose=True, transpose_prediction=True):
+        if transpose:
+            X_test = np.ascontiguousarray(X_test.T)
+            # Y_test = np.ascontiguousarray(Y_test.T)
+        # end if transpose:
+        if y_hat is None:
+            y_hat = self.predict_static_dyn(X_test, transpose=False, transpose_output=False)
+        else:
+            if transpose_prediction:
+                y_hat = TimeSeries([np.ascontiguousarray(y_t.T) for y_t in y_hat], y_hat.get_fs())
+            # end if transpose_prediction:
+        # end if y_hat is None:
+        score_dyn = []
+        for y_t, y_hat_t in zip(Y_test, y_hat):
+            if self.score_type=='r2':
+                score = r2_score(y_t, y_hat_t, multioutput="raw_values")
+            elif self.score_type=="corr": 
+                score = evaluate_prediction_corr(y_t, y_hat_t)
+            # end if score_type=='r2':
+            score_dyn.append(score)
+        # end for y_t, y_hat_t in zip(Y_test, y_hat):
+        time_score = np.stack(time_score, axis=-1) # time in the 0th or 1st axis depending on the evaluation used (corr has 1 feat, MSE has D)
+        if len(time_score.shape)==1: # appends a dimension if the score is correlation
+            time_score = time_score[np.newaxis, :]
+        # end if len(time_score.shape)==1:
+        self.score_vals_dyn = TimeSeries(score_dyn, Y_test.get_fs())
+        return score_dyn
+    # EOF
+    """
+    crossvalidate_static_dyn
+    Performs cross-validation on static-dynamic model.
+
+    INPUT:
+        - X: np.ndarray(float) -> static features
+        - Y: TimeSeries -> dynamic outputs
+        - transpose: bool -> whether to transpose inputs
+
+    OUTPUT:
+        - TimeSeries -> cross-validated score over time
+    """
+    def crossvalidate_static_dyn(self, X: np.ndarray, Y: TimeSeries, transpose=True):
+        time_score = []
+        for y_t in Y:
+            score = self.crossvalidate(X, y_t, transpose=transpose)
+            time_score.append(score)
+        # end for y_t in Y:
+        time_score = np.stack(time_score, axis=-1) # time in the 0th or 1st axis depending on the evaluation used (corr has 1 feat, MSE has D)
+        if len(time_score.shape)==1: # appends a dimension if the score is correlation
+            time_score = time_score[np.newaxis, :]
+        # end if len(time_score.shape)==1:
+        return TimeSeries(time_score, Y.get_fs())
+    # EOF
+
+    # --- TIME GENERAL (= shared weights for the same lag across datapoints)
+    """
+    fit_general_dyn
+    Fits regression model using shared weights across datapoints for each lag.
+
+    INPUT:
+        - X_train: TimeSeries -> input features over time
+        - Y_train: TimeSeries -> output features over time
+        - transpose: bool -> whether to transpose inputs
+
+    OUTPUT:
+        - weights_dyn: TimeSeries -> regression weights per lag
+        - intercepts_dyn: TimeSeries -> intercepts per lag
+    """
+    def fit_general_dyn(self, X_train: TimeSeries, Y_train: TimeSeries, transpose=True):
+        weights_dyn = []
+        intercepts_dyn = []
+        lags_range = get_lags(self.max_lag, self.symmetric)
+        for tau in lags_range:
+            x_shifted, y_shifted = shift_concatenate_xy(X_train, Y_train, tau, transpose=transpose) 
+            w_t, w0_t = self.fit(x_shifted, y_shifted, transpose=False)
+            weights_dyn.append(w_t)
+            intercepts_dyn.append(w0_t)
+        # end for tau in lags_range:
+        weights_dyn = TimeSeries(weights_dyn, Y_train.get_fs())
+        intercepts_dyn = TimeSeries(intercepts_dyn, Y_train.get_fs())
+        self.weights_dyn = weights_dyn
+        self.intercepts_dyn = intercepts_dyn
+        return weights_dyn, intercepts_dyn
+    # EOF
+    """
+    predict_general_dyn
+    Predicts outputs for general dynamic model using shared weights.
+
+    INPUT:
+        - X_t: np.ndarray(float) -> features at a given timepoint
+        - transpose: bool -> whether to transpose inputs
+        - transpose_output: bool -> whether to transpose outputs
+
+    OUTPUT:
+        - TimeSeries -> predicted outputs over time
+    """
+    def predict_general_dyn(self, X_t: np.ndarray, transpose=True, transpose_output=True): # given a timepoint in the model, I want to predict the neural activity before and after it
+        # don't accept X as a TimeSeries because the shift concatenate would yield a not so interpretable output otherwise
+        return self.predict_static_dyn(X_t, transpose=transpose, transpose_output=transpose_output) # it is the same as the static version, only in this case the weights start from before the model at t
+    # EOF
+    """
+    score_general_dyn
+    Evaluates general dynamic model predictions across lags.
+
+    INPUT:
+        - X_test: TimeSeries -> input features
+        - Y_test: TimeSeries -> ground truth outputs
+        - y_hat: TimeSeries -> optional precomputed predictions
+        - transpose_prediction: bool -> whether to transpose predictions
+
+    OUTPUT:
+        - TimeSeries -> score per lag
+    """
+    def score_general_dyn(self, X_test: TimeSeries, Y_test: TimeSeries, y_hat=None, transpose_prediction=True):
+        lags_range = get_lags(self.max_lag, self.symmetric)
+        w = self.get_weights_dyn()       
+        i = self.get_intercepts_dyn()       
+        time_score = []
+        for idx, tau in enumerate(lags_range):
+            x_shifted, y_shifted = shift_concatenate_xy(X_test, Y_test, tau, transpose=True) # transpose=True because the TimeSeries will be DxN for sure
+            w_t = w[idx]
+            i_t = i[idx]
+            if y_hat is None:
+                w_t = w_t.T
+                y_hat_t =  x_shifted @ w_t + i_t
+            else:
+                y_hat_t = y_hat[idx]
+            # end if y_hat is None:
+            if self.score_type=='r2':
+                score = r2_score(y_shifted, y_hat_t, multioutput="raw_values")
+            elif self.score_type=="corr": 
+                score = evaluate_prediction_corr(y_shifted, y_hat_t)
+            # end if score_type=='r2':
+            time_score.append(score)
+            # end for y_t, y_hat_t in zip(Y_test, y_hat):
+        time_score = np.stack(time_score, axis=-1) # time in the 0th or 1st axis depending on the evaluation used (corr has 1 feat, MSE has D)
+        if len(time_score.shape)==1: # appends a dimension if the score is correlation
+            time_score = time_score[np.newaxis, :]
+        # end if len(time_score.shape)==1:
+        self.score_vals_dyn = TimeSeries(time_score, Y_test.get_fs())
+        return self.score_vals_dyn
+    # EOF
+    """
+    crossvalidate_general_dyn
+    Performs cross-validation on general dynamic model across lags.
+
+    INPUT:
+        - X: TimeSeries -> input features
+        - Y: TimeSeries -> output features
+
+    OUTPUT:
+        - TimeSeries -> cross-validated score per lag
+    """
+    def crossvalidate_general_dyn(self, X: TimeSeries, Y: TimeSeries):
+        lags_range = get_lags(self.max_lag, self.symmetric)
+        time_score = []
+        for tau in lags_range:
+            x_shifted, y_shifted = shift_concatenate_xy(X, Y, tau, transpose=True) # transpose=True because the TimeSeries will be DxN for sure
+            score = self.crossvalidate(x_shifted, y_shifted, transpose=False)
+            time_score.append(score)
+        # end for y_t in Y:
+        time_score = np.stack(time_score, axis=-1) # time in the 0th or 1st axis depending on the evaluation used (corr has 1 feat, MSE has D)
+        if len(time_score.shape)==1: # appends a dimension if the score is correlation
+            time_score = time_score[np.newaxis, :]
+        # end if len(time_score.shape)==1:
+        self.score_vals_dyn = TimeSeries(time_score, Y.get_fs())
+        return self.score_vals_dyn
+    # EOF
+
+    # TODO --- TIME SPECIFIC (= each datapoint has its own weight - typically used if we short stimuli with a specific timecourse)
+
+    # time-dependent
+    # fit
+
+    # predict
+
+    # score
+
+    # cross-validate
