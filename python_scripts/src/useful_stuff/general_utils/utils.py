@@ -890,6 +890,16 @@ class TimeSeries:
         overall_avg = reduce(self.get_array(), 'neurons time ... -> time', 'mean')
         return overall_avg
     # EOF
+    def z_score_feats(self):
+        X_array = self.get_array()  # shape: (feats, time) or (feats, time, trials)
+        # compute mean and std across all non-feature axes
+        axes = tuple(range(1, X_array.ndim))  # all axes except feats
+        m = X_array.mean(axis=axes, keepdims=True)   # shape compatible for broadcasting
+        std = X_array.std(axis=axes, keepdims=True)
+        X_z = (X_array - m) / std
+        self.set_array(X_z)
+        return self.get_array()
+    # EOF
     def resample(self, new_fs):
         self.type_check()
         if new_fs < self.fs: # smoothing
