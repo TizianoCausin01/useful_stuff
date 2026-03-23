@@ -5,8 +5,8 @@ from torchvision import models, transforms
 import timm
 from scipy.io import loadmat
 from einops import reduce, rearrange
-sys.path.append("..")
-from general_utils.utils import print_wise, get_upsampling_indices, is_empty
+sys.path.append("../..")
+from useful_stuff.general_utils.utils import print_wise, get_upsampling_indices, is_empty
 
 def get_video_dimensions(cap):
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
@@ -14,35 +14,92 @@ def get_video_dimensions(cap):
     n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     return round(height), round(width), round(n_frames) # round to make them int
 
+"""
+read_video
+Load a video from disk and return its frames as a NumPy array.
 
-def read_video(paths, rank, fn, vid_duration=0):
-    video_path = f"{paths['livingstone_lab']}/Stimuli/Movies/all_videos/{fn}" 
-    cap = cv2.VideoCapture(video_path)
+INPUT:
+    - paths: dict -> must contain the key 'livingstone_lab' pointing to the base directory
+    - rank: int -> process rank used for logging
+    - fn: str -> filename of the video to load
+    - vid_duration: float (default=0) -> duration (in seconds) of the video to read.
+        If 0, the full video is loaded; otherwise, only frames up to the specified duration are read.
+
+OUTPUT:
+    - video: np.ndarray, shape (n_frames, H, W, C) -> video frames in RGB format
+
+NOTES:
+    - Frames are read using OpenCV and converted from BGR to RGB.
+    - If vid_duration is specified, the number of frames is computed as:
+          min(round(vid_duration * fps), total_frames)
+    - Raises FileNotFoundError if the video cannot be opened.
+    - Raises RuntimeError if a frame cannot be read.
+"""
+def read_video(paths, file_name, folder_name=None, start=0, end=-1, rank=None, to_array=None, conversion=cv2.COLOR_BGR2RGB, device='cpu'):
+    stimuli_path = f"{paths['data_path']}/stimuli/"
+    if not os.path.isdir(stimuli_path): # in the livingstone lab the case is upper
+        stimuli_path = f"{paths['data_path']}/Stimuli/"
+    # end if not os.path.isdir(stimuli_path):
+    if folder_name is not None:
+        stimuli_path = f"{stimuli_path}{folder_name}/"
+    # end if folder_name is not None:
+    fn_path = f"{stimuli_path}{file_name}"
+    cap = cv2.VideoCapture(fn_path)
     if not cap.isOpened():
-        raise FileNotFoundError(f"Cannot open video file: {video_path}")
-    height, width, n_frames = get_video_dimensions(cap)
+        raise FileNotFoundError(f"Cannot open video file: {fn_path}")
     fps = cap.get(cv2.CAP_PROP_FPS)
-    if vid_duration == 0:
-        frames_to_loop = n_frames
-    else:
-        frames_to_loop = min(round(vid_duration * fps), n_frames)
-    # end if vid_duration == 0:
-    
-    video = np.zeros((frames_to_loop, height, width, 3), dtype=np.uint8) # standard [B, H, W, C]
-    counter = 0
-    total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    for frame_idx in range(frames_to_loop):
+    height, width, frames_n = get_video_dimensions(cap)
+    video_duration_s = frames_n / fps  
+    start_frame = int(round(start * fps))
+    end_frame   = int(round(end * fps)) if end != -1 else frames_n
+    if start_frame >= frames_n:
+        raise IndexError(f"{start=} is beyond video length")
+    # end if start_frame >= frames_n:
+    if end_frame > frames_n:
+        raise IndexError(
+            f"The selected video {end=} is larger than the video duration={round(video_duration_s, 3)}"
+        )
+    # end if end_frame > frames_n:
+    if end_frame <= start_frame:
+        raise ValueError(f"{end=} must be greater than {start=}")
+    # end if end_frame <= start_frame:
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+    actual_start = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+    if start_frame != actual_start: # checks the actual time of the cap in frames
+        raise IndexError(f"Requested {start_frame}, got {actual_start} - Open-cv not handling cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame) correctly, likely it is landing on the previous keyframe")
+    # end if start_frame != actual_start:
+    actual_time = actual_start/fps
+    if not np.isclose(start, actual_time, atol=1/fps): # checks the actual time of the cap in seconds
+        raise IndexError(f"Requested {start}, got {actual_time} - Open-cv not handling cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame) correctly, likely it is landing on the previous keyframe")
+    # end if start_frame != actual_start:
+    frames_to_loop = int(end_frame - start_frame)
+
+    video = []
+    for _ in range(frames_to_loop):
         ret, frame = cap.read()
         if not ret:
-            raise RuntimeError(f"Failed to read frame {counter} from {video_path}")
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        video[frame_idx, :, :, :] = frame
-        counter += 1
-    # end while True
-    print_wise(f"{fn} read successfully", rank=rank)
-    cap.release()
+            raise RuntimeError(f"Failed to read frame {round(cap.get(cv2.CAP_PROP_POS_MSEC)*fps/1000)} from {fn_path}")
+        
+        if conversion is not None:
+            frame = cv2.cvtColor(frame, conversion) # can I do something fancier here?
+        # end if conversion is not None:
+        video.append(frame)
+    # end for _ in range(frames_to_loop):
+    if to_array is not None:
+        if to_array == 'numpy':
+            video = np.stack(video)
+        elif to_array == 'torch':
+            video = [torch.from_numpy(frame).float() / 255.0 for frame in video]
+            video = torch.stack(video).to(device) # (N,H,W,...)
+            if video.ndim == 4:
+                video = video.permute(0, 3, 1, 2) # (N,C,H,W,...)
+            # end if video.ndim == 4:
+        # end if to_array == 'numpy':
+    # end if to_array is not None:
+    cap.release()  
+    print_wise(f"finished reading video {fn_path} \nfps={round(fps, 2)}, {height=}, {width=}, n_frames={len(video)}", rank=rank)
     return video
-
+# EOF
 
 
 def load_stimuli_models(paths, model_name, file_names, resolution_Hz):
