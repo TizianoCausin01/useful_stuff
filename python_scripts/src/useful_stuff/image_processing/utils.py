@@ -35,7 +35,7 @@ NOTES:
     - Raises FileNotFoundError if the video cannot be opened.
     - Raises RuntimeError if a frame cannot be read.
 """
-def read_video(paths, file_name, folder_name=None, start=0, end=-1, rank=None, to_array=None, conversion=cv2.COLOR_BGR2RGB, device='cpu'):
+def read_video(paths, file_name, folder_name=None, cap=None, start=0, end=-1, rank=None, to_array=None, conversion=cv2.COLOR_BGR2RGB, device='cpu'):
     stimuli_path = f"{paths['data_path']}/stimuli/"
     if not os.path.isdir(stimuli_path): # in the livingstone lab the case is upper
         stimuli_path = f"{paths['data_path']}/Stimuli/"
@@ -44,7 +44,9 @@ def read_video(paths, file_name, folder_name=None, start=0, end=-1, rank=None, t
         stimuli_path = f"{stimuli_path}{folder_name}/"
     # end if folder_name is not None:
     fn_path = f"{stimuli_path}{file_name}"
-    cap = cv2.VideoCapture(fn_path)
+    if cap is None:
+        cap = cv2.VideoCapture(fn_path)
+    # end if cap is None: 
     if not cap.isOpened():
         raise FileNotFoundError(f"Cannot open video file: {fn_path}")
     fps = cap.get(cv2.CAP_PROP_FPS)
