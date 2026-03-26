@@ -8,7 +8,7 @@ from einops import reduce, rearrange
 import torch
 import torch.nn.functional as F
 sys.path.append("../..")
-from useful_stuff.general_utils.utils import print_wise, get_upsampling_indices, is_empty
+from useful_stuff.general_utils.utils import print_wise, get_upsampling_indices, is_empty, get_device
 
 def get_video_dimensions(cap):
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)

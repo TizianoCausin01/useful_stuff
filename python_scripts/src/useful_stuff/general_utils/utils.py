@@ -391,14 +391,15 @@ def is_empty(x):
 
 
 
-def get_device():
+def get_device(verbose=False):
     if torch.backends.mps.is_available() and torch.backends.mps.is_built():
         device = torch.device("mps")
     elif torch.cuda.is_available():
         device = torch.device("cuda")
     else:
         device = torch.device("cpu")
-    print_wise(f"device being used: {device}")
+    if verbose:
+        print_wise(f"device being used: {device}")
     return device
 # EOF
 
