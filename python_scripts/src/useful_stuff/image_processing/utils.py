@@ -5,6 +5,8 @@ from torchvision import models, transforms
 import timm
 from scipy.io import loadmat
 from einops import reduce, rearrange
+import torch
+import torch.nn.functional as F
 sys.path.append("../..")
 from useful_stuff.general_utils.utils import print_wise, get_upsampling_indices, is_empty
 
@@ -35,7 +37,7 @@ NOTES:
     - Raises FileNotFoundError if the video cannot be opened.
     - Raises RuntimeError if a frame cannot be read.
 """
-def read_video(paths, file_name, folder_name=None, cap=None, start=0, end=-1, rank=None, to_array=None, conversion=cv2.COLOR_BGR2RGB, device='cpu'):
+def read_video(paths, file_name, folder_name=None, cap=None, start=0, end=-1, rank=None, to_array=None, conversion=cv2.COLOR_BGR2RGB, device='cpu', verbose=True, release=True):
     stimuli_path = f"{paths['data_path']}/stimuli/"
     if not os.path.isdir(stimuli_path): # in the livingstone lab the case is upper
         stimuli_path = f"{paths['data_path']}/Stimuli/"
@@ -98,8 +100,10 @@ def read_video(paths, file_name, folder_name=None, cap=None, start=0, end=-1, ra
             # end if video.ndim == 4:
         # end if to_array == 'numpy':
     # end if to_array is not None:
-    cap.release()  
-    print_wise(f"finished reading video {fn_path} \nfps={round(fps, 2)}, {height=}, {width=}, n_frames={len(video)}", rank=rank)
+    if release:
+        cap.release()  
+    if verbose:
+        print_wise(f"finished reading video {fn_path} \nfps={round(fps, 2)}, {height=}, {width=}, n_frames={len(video)}", rank=rank)
     return video
 # EOF
 
@@ -648,4 +652,37 @@ def get_relevant_output_layers(model_name, pkg='torchvision'):
     raise ValueError(f"Model {model_name} not supported in `get_relevant_output_layers()`.")
 # EOF
 
+"""
+preprocess_batch
+Convert a batch of images to model-ready format: channel-first, resized, and normalized.
 
+INPUT:
+    - batch: torch.Tensor -> (B, H, W, C)
+    - input_size: int -> target spatial size (e.g. 224, 384)
+    - m: list[float] -> mean for normalization (default: ImageNet)
+    - std: list[float] -> std for normalization (default: ImageNet)
+
+OUTPUT:
+    - batch: torch.Tensor -> (B, 3, input_size, input_size)
+"""
+def preprocess_batch(batch, input_size, m=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], device='cpu'):
+    # 1. Convert to float and scale to [0,1] if needed
+    batch = batch.to(device)
+    batch = batch.permute(0,3,1,2)
+    if batch.dtype != torch.float32:
+        batch = batch.float()
+    if batch.max() > 1.0:
+        batch = batch / 255.0
+    # 2. Resize (keeps it simple: direct resize)
+    batch = F.interpolate(
+        batch,
+        size=(input_size, input_size),
+        mode='bilinear',
+        align_corners=False
+    )
+    # 3. Normalize with ImageNet stats
+    mean = torch.tensor(m, device=batch.device)[None, :, None, None]
+    std  = torch.tensor(std, device=batch.device)[None, :, None, None]
+    batch = (batch - mean) / std
+    return batch
+# EOF
