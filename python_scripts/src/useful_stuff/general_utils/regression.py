@@ -735,8 +735,10 @@ class dyn_linear_encoding(linear_encoding):
         y_regress_out = Y - y_hat
         y_regress_out = TimeSeries(y_regress_out, y_fs)
         if switch_back:
-            self.set_regression_type(old_regression_type)
-            print_wise(f"Switching back to {self.get_regression_obj()}")
+            if regression_type is not None:
+                self.set_regression_type(old_regression_type)
+                print_wise(f"Switching back to {self.get_regression_obj()}")
+            # end if regression_type is not None:
         # end if switch_back:
         return y_regress_out
     # EOF
