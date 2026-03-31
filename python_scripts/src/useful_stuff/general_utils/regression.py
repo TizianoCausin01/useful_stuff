@@ -6,7 +6,7 @@ from sklearn.model_selection import KFold, LeaveOneOut
 from sklearn.metrics import r2_score
 
 sys.path.append("../..")
-from useful_stuff.general_utils import shift_concatenate_xy, get_lags, TimeSeries
+from useful_stuff.general_utils import print_wise, shift_concatenate_xy, get_lags, TimeSeries
 
 """
 IdentitySplit
@@ -692,6 +692,54 @@ class dyn_linear_encoding(linear_encoding):
         return self.score_vals_dyn
     # EOF
 
+
+    """
+    pointwise_regress_out
+    Regress out X from Y using a linear model and return residual time series.
+
+    INPUT:
+        - X: TimeSeries -> Regressor time series (e.g., eye movements).
+        - Y: TimeSeries -> Target time series (e.g., MEG signals).
+        - regression_type: str | None (default=None) -> Type of regression model to use.
+            If provided, temporarily overrides the current regression setting.
+        - switch_back: bool (default=True) -> Whether to restore the original regression
+            type after computation.
+
+    OUTPUT:
+        - TimeSeries -> Residual signal after regressing out X from Y, with same
+            sampling frequency as input.
+
+    NOTES:
+        - X and Y must have the same sampling frequency.
+        - Signals are truncated to the minimum shared number of timepoints.
+        - Regression is fit once over all timepoints (no cross-validation).
+        - Output corresponds to: Y_clean = Y - Ŷ.
+    """
+    def pointwise_regress_out(self, X: TimeSeries, Y: TimeSeries, regression_type: str=None, switch_back: bool=True):
+        if regression_type is not None:
+            old_regression_type = self.get_regression_type()
+            self.set_regression_type(regression_type)
+            print_wise(f"Switching to {self.get_regression_obj()}")
+        # end if regression_type is not None:
+        x_fs, y_fs = X.get_fs(), Y.get_fs()
+        if x_fs != y_fs:
+            raise ValueError("The two TimeSeries have different sampling frequencies: {x_fs=}, {y_fs=}")
+        # end if x_fs != y_fs:
+        X = np.squeeze(X.get_array())
+        Y = np.squeeze(Y.get_array())
+        min_timepts = min(X.shape[1], Y.shape[1])
+        X = X[:, :min_timepts]
+        Y = Y[:, :min_timepts]
+        self.fit(X, Y)
+        y_hat = self.predict(X)
+        y_regress_out = Y - y_hat
+        y_regress_out = TimeSeries(y_regress_out, y_fs)
+        if switch_back:
+            self.set_regression_type(old_regression_type)
+            print_wise(f"Switching back to {self.get_regression_obj()}")
+        # end if switch_back:
+        return y_regress_out
+    # EOF
     # TODO --- TIME SPECIFIC (= each datapoint has its own weight - typically used if we short stimuli with a specific timecourse)
 
     # time-dependent
