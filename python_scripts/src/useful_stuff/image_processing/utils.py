@@ -402,10 +402,12 @@ OUTPUT:
         - classifier layers: unchanged
         - 'all': flattened into (batch, -1)
 """
-def pool_features(features, pooling):
+def pool_features(features, pooling=None):
     dimensions = features.shape
+    if pooling is None:
+        return features
     if pooling == 'all':
-        pooled_features = rearrange(features, 'batch ... -> batch (...)')
+        pooled_features = features.reshape(features.shape[0], -1, order='F')
         return pooled_features
     if len(dimensions) == 4: # CNNs case
         pooled_features = reduce(features, 'batch_size chan h w -> batch_size chan', pooling)
