@@ -7,6 +7,10 @@ from scipy.io import loadmat
 from einops import reduce, rearrange
 import torch
 import torch.nn.functional as F
+from transformers import AutoModel, AutoConfig
+from huggingface_hub import login
+token = os.getenv("HF_TOKEN")
+login(token=token)
 sys.path.append("../..")
 from useful_stuff.general_utils.utils import print_wise, get_upsampling_indices, is_empty, get_device
 
@@ -344,6 +348,108 @@ def load_timm_model(model_name, device, img_size=384):
     return model
 # EOF
 
+
+"""
+load_hf_model
+Loads a model from the Hugging Face Hub with optional control over dtype, attention implementation, revision, and custom code execution.
+
+INPUT:
+    - model_name: str -> name or identifier of the model on the Hugging Face Hub
+    - device: str -> device to load the model onto (e.g., 'cpu', 'cuda')
+    - dtype: torch.dtype -> data type for model weights (default: torch.float16)
+    - attn_implementation: str -> optional attention backend (e.g., 'flash_attention_2')
+    - hf_class: class -> Hugging Face model class to use (default: AutoModel)
+    - repo_url: str -> optional explicit repository path or URL (overrides model_name)
+    - revision: str -> specific model version (branch, tag, or commit hash)
+    - trust_remote_code: bool -> whether to allow execution of custom code from the repository
+
+OUTPUT:
+    - model: torch.nn.Module -> loaded Hugging Face model on the specified device
+"""
+def load_hf_model(
+    model_name: str,
+    device: str,
+    dtype=torch.float16,
+    attn_implementation: str = None,
+    hf_class=None,
+    repo_url: str = None,
+    revision: str = None,
+    trust_remote_code: bool = False
+):
+    # model source: explicit URL (if provided) or model_name
+    source = repo_url if repo_url is not None else model_name
+    kwargs = {"torch_dtype": dtype, "trust_remote_code": trust_remote_code}
+    if attn_implementation is not None:
+        kwargs["attn_implementation"] = attn_implementation
+    # end if attn_implementation is not None:
+    if revision is not None:
+        kwargs["revision"] = revision
+    # end if revision is not None:
+    cls = hf_class if hf_class is not None else AutoModel
+    model = cls.from_pretrained(source, **kwargs).to(device)
+    return model
+# EOF
+
+
+"""
+load_model
+Unified interface to load models from different libraries (timm, torchvision, Hugging Face),
+handling package-specific arguments and returning a model on the specified device.
+
+INPUT:
+    - model_name: str -> name of the model to load
+    - pkg: str -> package source ('timm', 'torchvision', or 'hf')
+    - device: str -> device to load the model onto (e.g., 'cpu', 'cuda')
+    - img_size: int -> input image size (used for timm and torchvision models)
+    - weights_type: str -> weights specification for torchvision models (default: 'DEFAULT')
+    - dtype: torch.dtype -> data type for Hugging Face model weights (default: torch.float16)
+    - attn_implementation: str -> optional attention backend for Hugging Face models
+    - hf_class: class -> Hugging Face model class to use (default: AutoModel)
+    - repo_url: str -> optional explicit repository path or URL for Hugging Face models
+    - revision: str -> specific model version for Hugging Face models
+    - trust_remote_code: bool -> whether to allow execution of custom code (Hugging Face only)
+
+OUTPUT:
+    - model: torch.nn.Module -> loaded model on the specified device
+"""
+def load_model(
+    model_name: str,
+    pkg: str,
+    device: str,
+    img_size: int = 384,
+    weights_type: str = 'DEFAULT',
+    dtype=torch.float16,
+    attn_implementation: str = None,
+    hf_class=None,
+    repo_url: str = None,
+    revision: str = None,
+    trust_remote_code: bool = False,
+):
+    if pkg == 'timm':
+        model = load_timm_model(model_name, device, img_size=img_size)
+
+    elif pkg == 'torchvision':
+        model = load_torchvision_model(
+            model_name, device, img_size=img_size, weights_type=weights_type
+        )
+
+    elif pkg == 'hf':
+        source = repo_url if repo_url is not None else model_name
+        kwargs = dict(dtype=dtype, trust_remote_code=trust_remote_code)
+        if attn_implementation is not None:
+            kwargs["attn_implementation"] = attn_implementation
+        if revision is not None:
+            kwargs["revision"] = revision
+
+        cls = hf_class if hf_class is not None else AutoModel
+        model = cls.from_pretrained(source, **kwargs).to(device)
+
+    else:
+        raise ValueError(f"{pkg=} is not currently supported")
+
+    return model
+# EOF
+
 """
 get_usual_transform
 Returns a standard preprocessing pipeline commonly used for 
@@ -648,7 +754,33 @@ def get_relevant_output_layers(model_name, pkg='torchvision'):
                 'blocks.22.mlp.fc2',
                 'blocks.23.mlp.fc2',
                    ]
-
+    if model_name=='dino_v3_l':
+        return [
+            "layer.0.mlp.down_proj",
+            "layer.1.mlp.down_proj",
+            "layer.2.mlp.down_proj",
+            "layer.3.mlp.down_proj",
+            "layer.4.mlp.down_proj",
+            "layer.5.mlp.down_proj",
+            "layer.6.mlp.down_proj",
+            "layer.7.mlp.down_proj",
+            "layer.8.mlp.down_proj",
+            "layer.9.mlp.down_proj",
+            "layer.10.mlp.down_proj",
+            "layer.11.mlp.down_proj",
+            "layer.12.mlp.down_proj",
+            "layer.13.mlp.down_proj",
+            "layer.14.mlp.down_proj",
+            "layer.15.mlp.down_proj",
+            "layer.16.mlp.down_proj",
+            "layer.17.mlp.down_proj",
+            "layer.18.mlp.down_proj",
+            "layer.19.mlp.down_proj",
+            "layer.20.mlp.down_proj",
+            "layer.21.mlp.down_proj",
+            "layer.22.mlp.down_proj",
+            "layer.23.mlp.down_proj",
+        ]
     if 'mobilenet_v3_large' in model_name:
         return ["features.6.block.0", "features.15.block.0", "features.6.block.1", "features.15.block.1", "features.6.block.2", "features.15.block.2", "features.6.block.3", "features.15.block.3", "classifier.0", "classifier.3"]
     raise ValueError(f"Model {model_name} not supported in `get_relevant_output_layers()`.")
@@ -688,3 +820,5 @@ def preprocess_batch(batch, input_size, m=[0.485, 0.456, 0.406], std=[0.229, 0.2
     batch = (batch - mean) / std
     return batch
 # EOF
+
+
