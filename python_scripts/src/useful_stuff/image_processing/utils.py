@@ -310,23 +310,6 @@ def split_in_batches(frames_per_vid, batch_size):
         batch_size_list.append(len(batch_idx)) # stores the current batch size
     return np.array(batch_size_list) 
 
-def map_anns_names(model_name, pkg='torchvision'):
-    if model_name=='alexnet':
-        return 'AlexNet'
-    elif model_name== 'resnet50':
-        return 'ResNet50'    
-    elif model_name== 'resnet18':
-        return 'ResNet18'
-    elif model_name == 'vit_b_16':
-        return 'ViT_B_16'
-    elif model_name == 'vit_l_16':
-        if pkg=='torchvision':
-            return 'ViT_L_16'
-        elif pkg=='timm':
-            return 'vit_large_patch16'
-        # end if pkg=='torchvision':
-    elif model_name == 'vgg16':
-        return 'VGG16'
 
 """
 get_usual_transform

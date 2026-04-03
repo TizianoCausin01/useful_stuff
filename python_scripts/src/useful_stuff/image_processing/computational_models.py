@@ -131,6 +131,26 @@ def load_model(
 # EOF
 
 
+def map_anns_names(model_name, pkg='torchvision'):
+    if model_name=='alexnet':
+        return 'AlexNet'
+    elif model_name== 'resnet50':
+        return 'ResNet50'    
+    elif model_name== 'resnet18':
+        return 'ResNet18'
+    elif model_name == 'vit_b_16':
+        return 'ViT_B_16'
+    elif model_name == 'vit_l_16':
+        if pkg=='torchvision':
+            return 'ViT_L_16'
+        elif pkg=='timm':
+            return 'vit_large_patch16'
+        # end if pkg=='torchvision':
+    elif model_name == 'vgg16':
+        return 'VGG16'
+
+
+
 """
 get_relevant_output_layers
 Returns a list of layer names from a specified deep neural network model

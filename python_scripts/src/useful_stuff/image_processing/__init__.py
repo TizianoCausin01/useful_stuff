@@ -1,4 +1,4 @@
 __all__ = ['get_video_dimensions', 'read_video', 'detect_faces', 'par_detect_faces', 'compute_dg_saliency', 'ICF_setup', 'compute_ICF_saliency', 'load_stimuli_models', 'resize_video_array', 'shuffle_frames', 'concatenate_frames_batch', 'list_videos', 'get_frames_number', 'split_in_batches','load_torchvision_model', 'load_hf_model', 'load_model', 'compute_torchvision_model', 'get_usual_transform', 'load_timm_model','img_dataloader_feature_extraction_loop','img_feats_extraction', 'map_image_order_from_ann_to_monkey','pool_features', 'img_feats_extraction_pooling', 'get_activation', 'preprocess_batch', 'imgANN',] 
 from .utils import get_video_dimensions, read_video, load_stimuli_models, resize_video_array, shuffle_frames, concatenate_frames_batch, list_videos, get_frames_number, split_in_batches, get_usual_transform, preprocess_batch
 
-from .computational_models import pool_features, load_model, get_relevant_output_layers, get_activation, imgANN
+from .computational_models import pool_features, load_model, map_anns_names, get_relevant_output_layers, get_activation, imgANN
