@@ -597,12 +597,15 @@ class imgANN():
         return self
 
     # --- OTHER METHODS ---
-    def get_layer_output_shape(self, layer_name, imsize=224):
-        self.create_feature_extractor([layer_name])
+    def get_layer_output_shape(self, layer_name):
+        module = get_module_by_path(self.model, layer_name)
+        f = {}
         with torch.no_grad():
-            in_proxy = torch.randn(1, 3, imsize, imsize).to(self.device)
-            tmp_shape = self.feature_extractor(in_proxy)[layer_name].shape[1:]
-        self.feature_extractor = None
+            h = module.register_forward_hook(get_activation(layer_name, f, None))
+            in_proxy = torch.randn(1, 3, self.img_size, self.img_size).to(self.device)
+            self.model(in_proxy)
+            tmp_shape = f[layer_name].shape[1:]
+        h.remove()
         return tmp_shape
     # EOF 
 
