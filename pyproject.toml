@@ -1,0 +1,22 @@
+[project]
+name = "useful-stuff"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12.9"
+dependencies = [
+    "einops>=0.8.2",
+    "h5py>=3.16.0",
+    "ipykernel>=7.2.0",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.8",
+    "notebook>=7.5.5",
+    "numba>=0.64.0",
+    "numpy>=2.4.3",
+    "opencv-python>=4.13.0.92",
+    "pyyaml>=6.0.3",
+    "scikit-learn>=1.8.0",
+    "timm>=1.0.25",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+]
