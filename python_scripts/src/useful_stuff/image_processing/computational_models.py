@@ -6,8 +6,8 @@ from torchvision import models
 from torchvision.models.feature_extraction import create_feature_extractor
 from transformers import AutoModel, AutoConfig
 from huggingface_hub import login
-token = os.getenv("HF_TOKEN")
-login(token=token)
+#token = os.getenv("HF_TOKEN")
+#login(token=token)
 
 sys.path.append("../..")
 from useful_stuff.general_utils.utils import print_wise, decode_matlab_strings, create_RDM, get_module_by_path, get_device
