@@ -927,6 +927,81 @@ class TimeSeries:
         ac_mat = autocorr_mat(self.array, data2=other.array, metric=metric)
         return ac_mat 
     # EOF
+    """
+    delay_embeddings
+    Construct delay-embedded version of the time series by stacking temporal windows
+    around each timepoint.
+
+    INPUT:
+        - lags: tuple (lag_start, lag_end) -> Temporal window relative to each timepoint.
+            Example:
+                (-2, 0)   -> uses [t-2, t-1, t]
+                (-2, 2)   -> uses [t-2, ..., t+2]
+
+        - pad_mode: str | None (default=None) -> Padding strategy at the boundaries.
+            Determines how values outside the signal are handled.
+
+            Cases:
+                - None:
+                    No padding. Only valid timepoints are considered.
+                    Output duration is reduced.
+                    Example:
+                        lags = (-2, 0), T = 100 -> output length = 98
+
+                - "edge":
+                    Repeats boundary values.
+                    Example:
+                        x = [1, 2, 3], lags = (-1, 0)
+                        padded -> [1, 1, 2, 3]
+
+                - "reflect":
+                    Mirrors the signal at the boundaries.
+                    Example:
+                        x = [1, 2, 3], lags = (-2, 0)
+                        padded -> [3, 2, 1, 2, 3]
+
+                - "constant":
+                    Pads with zeros (or constant value).
+                    Example:
+                        x = [1, 2, 3], lags = (-2, 0)
+                        padded -> [0, 0, 1, 2, 3]
+
+    OUTPUT:
+        - TimeSeries -> Delay-embedded time series of shape
+            (features * window_size, timepoints_new),
+            where window_size = lag_end - lag_start + 1.
+            Sampling frequency is preserved.
+    """
+    def delay_embeddings(self, lags, pad_mode=None):
+        X = self.get_array()
+        if X.ndim == 3:
+            raise ValueError("Not implemented for trials yet")
+        T = len(self)
+        lag_start, lag_end = lags
+        if pad_mode is None:
+            X_padded = X
+            time_indices = range(-lag_start, T - lag_end) # given the lags, the edges won't be considered
+            pad_left = 0 # useful to compute the center later
+        else:
+            pad_left  = -lag_start
+            pad_right = lag_end
+            X_padded = np.pad(
+                X,
+                ((0, 0), (pad_left, pad_right)),
+                mode=pad_mode
+            )
+            time_indices = range(T) # considers all the timepoints
+        # end if pad:
+        ts_delay_emb = []
+        # loops through all the available timepoints and embeds them in their delays
+        for t in time_indices:
+            center = t + pad_left
+            window = X_padded[:, center + lag_start : center + lag_end + 1]
+            ts_delay_emb.append(window.flatten()) # takes the features over the points -lags(t):lags(t) and flattens their features
+        # end for t in time_indices:
+        Z = np.stack(ts_delay_emb, axis=1)
+        return TimeSeries(Z, self.get_fs())
+    # EOF
 # EOC
 
 
