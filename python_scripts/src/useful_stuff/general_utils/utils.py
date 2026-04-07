@@ -872,6 +872,12 @@ class TimeSeries:
             self.type = 'np'
         # end if self.type == 'list':
     # EOF
+    def shape(self):
+        if self.type == 'np':
+            return self.get_array().shape
+        else:
+            raise TypeError("This TimeSeries is in the List format, before asking for the shape, convert it to_numpy()")
+    # EOF
     def trial_avg(self):
         self.type_check()
         try:
