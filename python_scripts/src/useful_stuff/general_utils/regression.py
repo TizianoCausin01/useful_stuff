@@ -677,6 +677,12 @@ class dyn_linear_encoding(linear_encoding):
         - TimeSeries -> cross-validated score per lag
     """
     def crossvalidate_general_dyn(self, X: TimeSeries, Y: TimeSeries):
+        if len(X) != len(Y):
+            raise IndexError("The duration of X doesn't match the duration of Y")
+        
+        if X.get_fs() != Y.get_fs():
+            raise ValueError("The two TimeSeries have different sampling frequencies: {X.get_fs()=}, {Y.get_fs()=}")
+        # end if x_fs != y_fs:
         lags_range = get_lags(self.max_lag, self.symmetric)
         time_score = []
         for tau in lags_range:
@@ -718,22 +724,17 @@ class dyn_linear_encoding(linear_encoding):
     def pointwise_regress_out(self, X: TimeSeries, Y: TimeSeries, regression_type: str=None, switch_back: bool=True):
         if len(X) != len(Y):
             raise IndexError("The duration of X doesn't match the duration of Y")
+        
         if X.get_fs() != Y.get_fs():
-            raise IndexError("The sampling frequency of X doesn't match the duration of Y")
+            raise ValueError("The two TimeSeries have different sampling frequencies: {X.get_fs()=}, {Y.get_fs()=}")
+        # end if x_fs != y_fs:
         if regression_type is not None:
             old_regression_type = self.get_regression_type()
             self.set_regression_type(regression_type)
             print_wise(f"Switching to {self.get_regression_obj()}")
         # end if regression_type is not None:
-        x_fs, y_fs = X.get_fs(), Y.get_fs()
-        if x_fs != y_fs:
-            raise ValueError("The two TimeSeries have different sampling frequencies: {x_fs=}, {y_fs=}")
-        # end if x_fs != y_fs:
         X = np.squeeze(X.get_array())
         Y = np.squeeze(Y.get_array())
-        min_timepts = min(X.shape[1], Y.shape[1])
-        X = X[:, :min_timepts]
-        Y = Y[:, :min_timepts]
         self.fit(X, Y)
         y_hat = self.predict(X)
         y_regress_out = Y - y_hat
