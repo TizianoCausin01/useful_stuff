@@ -716,6 +716,10 @@ class dyn_linear_encoding(linear_encoding):
         - Output corresponds to: Y_clean = Y - Ŷ.
     """
     def pointwise_regress_out(self, X: TimeSeries, Y: TimeSeries, regression_type: str=None, switch_back: bool=True):
+        if len(X) != len(Y):
+            raise IndexError("The duration of X doesn't match the duration of Y")
+        if X.get_fs() != Y.get_fs():
+            raise IndexError("The sampling frequency of X doesn't match the duration of Y")
         if regression_type is not None:
             old_regression_type = self.get_regression_type()
             self.set_regression_type(regression_type)
