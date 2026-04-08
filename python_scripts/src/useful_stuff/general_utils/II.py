@@ -220,6 +220,8 @@ class dynInformationImbalance(InformationImbalance, dRSA):
                 conditioned_ranks = np.take_along_axis(ranks, mins, axis=0)
                 II = (2/(self.N**2 * self.k))*np.sum(conditioned_ranks)
                 dynII_mat[i, j] = II
+        if II_type == 'B2A':
+            dynII_mat = dynII_mat.T # because otherwise we'd have the conditioning mins of the model in the rows
         setattr(self, f"dynII_{II_type}", dynII_mat)
         return dynII_mat
     # EOF
