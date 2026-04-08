@@ -4,6 +4,7 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.linear_model import LinearRegression, RidgeCV, MultiTaskLassoCV, MultiTaskElasticNetCV
 from sklearn.model_selection import KFold, LeaveOneOut
 from sklearn.metrics import r2_score
+from sklearn.decomposition import PCA
 
 sys.path.append("../..")
 from useful_stuff.general_utils import print_wise, shift_concatenate_xy, get_lags, TimeSeries
@@ -734,6 +735,7 @@ class dyn_linear_encoding(linear_encoding):
             print_wise(f"Switching to {self.get_regression_obj()}")
         # end if regression_type is not None:
         X = np.squeeze(X.get_array())
+        y_fs = Y.get_fs()
         Y = np.squeeze(Y.get_array())
         self.fit(X, Y)
         y_hat = self.predict(X)
@@ -747,6 +749,29 @@ class dyn_linear_encoding(linear_encoding):
         # end if switch_back:
         return y_regress_out
     # EOF
+
+    def delay_embed_PCR_regress_out(self, X: TimeSeries, Y: TimeSeries, delays_to_embed: tuple[2], PCs_to_keep=None, pad_mode='edge', crop_end=True, regression_type: str=None, switch_back: bool=True):
+       embedded_X = X.delay_embeddings(delays_to_embed, pad_mode=pad_mode)
+       D, N = embedded_X.shape()
+       if PCs_to_keep is None: # if not specified, we keep half of the embedding dimension D or half of the datapoints N depending on which is the dominant dimension of the matrix
+           PCs_to_keep = round(min(D, N) / 2)
+       elif PCs_to_keep > min(D, N):
+           raise ValueError(f"You can't have more PCs ({PCs_to_keep}) that datapoints ({N}) or features ({D})")
+       # end if PCs_to_keep is None: 
+       pca_obj = PCA(n_components=PCs_to_keep)
+       embedded_X = embedded_X.get_array().T
+       reduced_emb_X = pca_obj.fit_transform(embedded_X)
+       reduced_emb_X = TimeSeries(reduced_emb_X.T, X.get_fs())
+       reduced_emb_X.resample(Y.get_fs())
+       if crop_end:
+           min_timepts = min(len(reduced_emb_X),len(Y)) 
+           reduced_emb_X = TimeSeries(reduced_emb_X.get_array()[:, :min_timepts, ...], reduced_emb_X.get_fs())
+           Y = TimeSeries(Y.get_array()[:, :min_timepts, ...], Y.get_fs()) #TODO check if this is modifying Y in place
+       # end if crop_end:
+       y_regress_out = self.pointwise_regress_out(reduced_emb_X, Y, regression_type=regression_type, switch_back=switch_back)
+       return y_regress_out, pca_obj
+    # EOF
+
     # TODO --- TIME SPECIFIC (= each datapoint has its own weight - typically used if we short stimuli with a specific timecourse)
 
     # time-dependent
