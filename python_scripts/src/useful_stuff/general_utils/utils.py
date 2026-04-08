@@ -1012,6 +1012,10 @@ class TimeSeries:
 
 """Small function for checking if two TimeSeries have the same length and frequency"""
 def compatible_TimeSeries_check(X: TimeSeries, Y: TimeSeries):
+    if not isinstance(X, TimeSeries) or not isinstance(Y, TimeSeries):
+        raise TypeError(
+            f"Both X and Y must be TimeSeries objects, got {type(X)} and {type(Y)}."
+        )
     if len(X) != len(Y):
         raise ValueError(f"X and Y TimeSeries must have the same length, got {len(X)} and {len(Y)}. ")
     if X.get_fs() != Y.get_fs():
