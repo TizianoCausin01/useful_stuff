@@ -1010,6 +1010,13 @@ class TimeSeries:
     # EOF
 # EOC
 
+"""Small function for checking if two TimeSeries have the same length and frequency"""
+def compatible_TimeSeries_check(X: TimeSeries, Y: TimeSeries):
+    if len(X) != len(Y):
+        raise ValueError(f"X and Y TimeSeries must have the same length, got {len(X)} and {len(Y)}. ")
+    if X.get_fs() != Y.get_fs():
+        raise ValueError(f"X and Y TimeSeries must have the same sampling frequency, got X_fs={X.get_fs()} and Y_fs={Y.get_fs()}.")
+# EOF 
 
 """
 get_lags
