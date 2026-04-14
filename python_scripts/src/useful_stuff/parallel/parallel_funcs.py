@@ -50,53 +50,57 @@ def split_parallel(n_tasks, func_work, args_work, paths, rec_back=False, func_me
 
 def master_workers_queue(task_list, paths, func, *args, **kwargs):
     comm, rank, size = parallel_setup()
-    root = 0
-    tot_n = len(task_list)
-    next_to_do = 0
-    if rank == 0:
-        for dst in range(1, size):
-            comm.send(
-                np.int32(next_to_do), dest=dst, tag=11
-            )  # Send data to process with rank 1
-            next_to_do += 1
-            print_wise(f"sent {next_to_do} to {dst}", rank=rank)
-            if next_to_do == tot_n:
-                break
-            # end if done_by_now+1 > tot_n:
-        # end for dst in range(1, size):
-        
-        while next_to_do < tot_n:
-            status = MPI.Status()
-            d = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
-            src = status.Get_source()
-            tag = status.Get_tag()
-            comm.send(
-                np.int32(next_to_do), dest=src, tag=11
-            )  # Send data to process with rank 1
-            next_to_do += 1
-            print_wise(f"{src} is free again, root sent : {next_to_do}", rank=rank)
-        # end while next_to_do < tot_n:
+    try:
+        root = 0
+        tot_n = len(task_list)
+        next_to_do = 0
+        if rank == 0:
+            for dst in range(1, size):
+                comm.send(
+                    np.int32(next_to_do), dest=dst, tag=11
+                )  # Send data to process with rank 1
+                next_to_do += 1
+                print_wise(f"sent {next_to_do} to {dst}", rank=rank)
+                if next_to_do == tot_n:
+                    break
+                # end if done_by_now+1 > tot_n:
+            # end for dst in range(1, size):
+            
+            while next_to_do < tot_n:
+                status = MPI.Status()
+                d = comm.recv(source=MPI.ANY_SOURCE, tag=MPI.ANY_TAG, status=status)
+                src = status.Get_source()
+                tag = status.Get_tag()
+                comm.send(
+                    np.int32(next_to_do), dest=src, tag=11
+                )  # Send data to process with rank 1
+                next_to_do += 1
+                print_wise(f"{src} is free again, root sent : {next_to_do}", rank=rank)
+            # end while next_to_do < tot_n:
 
-        print_wise(f"Sending termination signals", rank=rank)
-        for i in range(1, size):
-            comm.send(np.int32(-1), dest=i, tag=11)  # Send data to process with rank 1
-        # end for i in range(1, size):
+            print_wise(f"Sending termination signals", rank=rank)
+            for i in range(1, size):
+                comm.send(np.int32(-1), dest=i, tag=11)  # Send data to process with rank 1
+            # end for i in range(1, size):
 
-    else:
-        while True:
-            data = comm.recv(source=0, tag=11)  # Receive data from process with rank 0
-            print_wise(f"received: {data}", rank=rank)
-            if data == np.int32(-1):
-                break
-            func(paths, rank, task_list[data], *args, **kwargs)
-            comm.send(
-                np.int32(1), dest=root, tag=11
-            )  # Send data to process with rank 1
-        # end while True:
-    # end if rank == 0:
+        else:
+            while True:
+                data = comm.recv(source=0, tag=11)  # Receive data from process with rank 0
+                print_wise(f"received: {data}", rank=rank)
+                if data == np.int32(-1):
+                    break
+                func(paths, rank, task_list[data], *args, **kwargs)
+                comm.send(
+                    np.int32(1), dest=root, tag=11
+                )  # Send data to process with rank 1
+            # end while True:
+        # end if rank == 0:
 
-    print_wise("finished", rank=rank)
-    MPI.Finalize()
+        print_wise("finished", rank=rank)
+        MPI.Finalize()
+    except Exception as e:
+        print(f"Rank {rank} failed with error: {e}", flush=True)
+        comm.Abort(1)  # kills all MPI processes immediately
 #EOF
 
 
