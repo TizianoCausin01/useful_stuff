@@ -1118,3 +1118,49 @@ def softmax(x, T=1.0):
     e = np.exp(x - np.max(x))  # numerical stability
     return e / e.sum()
 # EOF
+
+
+'''
+get_centroid
+Computes the weighted centroid of a lag plot along the time (lag) axis.
+Negative values are ignored; only positive amplitudes contribute as weights.
+INPUT:
+    - lagplot: array-like (T,) or (F x T) -> lag plot for 1 or F features
+    - max_lag: int -> maximum lag in samples; lags span [-max_lag, +max_lag]
+    - fs: float -> sampling frequency in Hz, used to convert lags to seconds
+    - min_peak_percent: float | None -> if set, only weights >= (min_peak_percent * peak)
+                        contribute per feature; must be in [0, 1]
+OUTPUT:
+    - centroid: float -> lag centroid in seconds (if input is 1D)
+                np.ndarray (F,) -> per-feature lag centroids in seconds (if input is 2D)
+                NaN (or NaN entries) where all weights are zero
+'''
+def get_centroid(lagplot, max_lag, fs, min_peak_percent=None):
+    arr = np.asarray(lagplot, dtype=float)
+    if arr.ndim not in (1, 2):
+        raise ValueError("lagplot must be 1D (time) or 2D (features x time).")
+
+    was_1d = arr.ndim == 1
+    if was_1d:
+        arr = arr[np.newaxis, :]  # treat as (1, time)
+
+    lags = np.arange(-max_lag, max_lag + 1, dtype=float) / fs
+    if arr.shape[-1] != lags.size:
+        raise ValueError(
+            f"Last dimension must be {lags.size} (2*max_lag+1), got {arr.shape[-1]}."
+        )
+
+    weights = np.where(arr > 0, arr, 0.0)  # avoids mutating a copy
+
+    if min_peak_percent is not None:
+        if not (0 <= min_peak_percent <= 1):
+            raise ValueError("min_peak_percent must be in [0,1].")
+        peak = weights.max(axis=-1, keepdims=True)
+        weights = np.where(weights >= peak * min_peak_percent, weights, 0.0)
+
+    denom = weights.sum(axis=-1)           # (features,)
+    num = (weights * lags).sum(axis=-1)    # (features,)
+
+    centroid = np.where(denom > 0, num / denom, np.nan)  # no boolean indexing needed
+
+    return centroid[0].item() if was_1d else centroid
