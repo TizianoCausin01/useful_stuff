@@ -9,3 +9,4 @@ from .regression import evaluate_prediction_corr, linear_encoding, dyn_linear_en
 from .plots import truncate_colormap
 from .RSA import RSA, dRSA
 from .II import InformationImbalance, dynInformationImbalance
+from .inferential_stats import permutation_test_corr
