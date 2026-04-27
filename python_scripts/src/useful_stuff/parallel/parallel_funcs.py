@@ -1,6 +1,7 @@
 import sys, os
 from mpi4py import MPI
 import numpy as np
+import traceback
 
 sys.path.append("..")
 from general_utils.utils import make_intervals, print_wise
@@ -100,6 +101,8 @@ def master_workers_queue(task_list, paths, func, *args, **kwargs):
         MPI.Finalize()
     except Exception as e:
         print(f"Rank {rank} failed with error: {e}", flush=True)
+        traceback.print_exc(file=sys.stdout)  # prints full traceback
+        sys.stdout.flush()
         comm.Abort(1)  # kills all MPI processes immediately
 #EOF
 
