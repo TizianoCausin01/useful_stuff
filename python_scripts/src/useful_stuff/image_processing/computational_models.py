@@ -17,7 +17,7 @@ def load_torchvision_model(model_name, device, img_size=224, weights_type='DEFAU
     model_cls = getattr(models, model_name) # Get the model class
     weights_name = map_anns_names(model_name)+ '_Weights' # Get the corresponding weights enum, for model_name="alexnet", this gets "AlexNet_Weights"
     weights_enum = getattr(models, weights_name)    
-    model = model_cls(weights=getattr(weights_enum, weights_type)).to(device).eval() # Load with DEFAULT weights, by default
+    model = model_cls(weights=getattr(weights_enum, weights_type)).to(device) # Load with DEFAULT weights, by default
     return model
 # EOF
 
@@ -490,6 +490,7 @@ class imgANN():
             revision=revision,
             trust_remote_code=trust_remote_code,
         )
+        self.model.eval() 
         self.relevant_layers = get_relevant_output_layers(model_name, pkg=pkg) if relevant_layers is None else relevant_layers
         self.features = {}
         self.handles = {}

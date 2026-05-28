@@ -16,14 +16,15 @@ OUTPUT:
     - ipcas: dict[str, IncrementalPCA] -> fitted IncrementalPCA objects for each layer
 """
 def compute_img_ipca(ann: imgANN, loader: DataLoader, ipcas: dict[str: IncrementalPCA], device: torch, rank=0):
-    # Forward each image batch and let imgANN hooks collect target-layer features.
-    for idx, (images, _) in enumerate(loader):
-        images = images.to(device)
-        ann.model(images)
-        # Update each layer's iPCA with the current batch of activations.
-        for layer, features in ann.features.items():
-            features = features.detach().cpu().numpy()
-            ipcas[layer].partial_fit(features)
-        print_wise(f"Computed batch {idx}/{len(loader)-1} of {ann.model_name}: {list(ipcas.keys())}", rank=rank)
+    with torch.no_grad():
+        # Forward each image batch and let imgANN hooks collect target-layer features.
+        for idx, (images, _) in enumerate(loader):
+            images = images.to(device)
+            ann.model(images)
+            # Update each layer's iPCA with the current batch of activations.
+            for layer, features in ann.features.items():
+                features = features.detach().cpu().numpy()
+                ipcas[layer].partial_fit(features)
+            print_wise(f"Computed batch {idx}/{len(loader)-1} of {ann.model_name}: {list(ipcas.keys())}", rank=rank)
     return ipcas
 # EOF 
