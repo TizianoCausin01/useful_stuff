@@ -4,7 +4,7 @@ import numpy as np
 import traceback
 
 sys.path.append("..")
-from general_utils.utils import make_intervals, print_wise
+from useful_stuff.general_utils.utils import make_intervals, print_wise
 
 def parallel_setup():
     comm = MPI.COMM_WORLD  # Get the global communicator
