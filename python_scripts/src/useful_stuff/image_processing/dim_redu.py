@@ -1,6 +1,7 @@
 import os, yaml, sys
 import numpy as np
 import torch
+import time
 sys.path.append("../..")
 from useful_stuff.general_utils.utils import print_wise
 from useful_stuff.image_processing.computational_models import imgANN
@@ -20,12 +21,18 @@ def compute_img_ipca(ann: imgANN, loader: DataLoader, ipcas: dict[str: Increment
     with torch.no_grad():
         # Forward each image batch and let imgANN hooks collect target-layer features.
         for idx, (images, _) in enumerate(loader):
+            st_forw = time.time()
             images = images.to(device)
             ann.model(images)
+            end_forw = time.time()
+            print(f"forward took {end_forw - st_forw}")
             # Update each layer's iPCA with the current batch of activations.
             for layer, features in ann.features.items():
+                st_ipca = time.time()
                 features = features.detach().cpu().numpy()
                 ipcas[layer].partial_fit(features)
+                end_ipca = time.time()
+                print(f"ipca fit {layer} took {end_ipca - st_ipca}")
             print_wise(f"Computed batch {idx}/{len(loader)-1} of {ann.model_name}: {list(ipcas.keys())}", rank=rank)
     return ipcas
 # EOF 
