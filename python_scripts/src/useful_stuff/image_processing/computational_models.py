@@ -463,6 +463,7 @@ class imgANN():
         repo_url: str = None,
         revision: str = None,
         trust_remote_code: bool = False,
+        device = None
     ):
         self.model_name = model_name
         self.pkg = pkg
@@ -476,7 +477,7 @@ class imgANN():
         self.revision = revision
         self.trust_remote_code = trust_remote_code
 
-        self.device = get_device(verbose=True)
+        self.device = get_device(verbose=True) if device == None else device
         self.model = load_model(
             model_name,
             pkg,
