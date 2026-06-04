@@ -26,8 +26,11 @@ def compute_img_ipca(ann: imgANN, loader: DataLoader, ipcas: dict[str: Increment
         for idx, (images, _) in enumerate(loader):
             st_forw = time.time()
             features_list = {layer: [] for layer in ann.handles.keys()}
-            for i in range(0, loader.batch_size, sub_batch_size):
+            batch_size = len(images)
+            for i in range(0, batch_size, sub_batch_size):
                 sub_batch = images[i:i+sub_batch_size]
+                if len(sub_batch) == 0:
+                    continue
                 sub_batch = sub_batch.to(device)
                 ann.model(sub_batch)
                 del sub_batch
