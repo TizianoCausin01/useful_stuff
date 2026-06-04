@@ -35,7 +35,7 @@ def compute_img_ipca(ann: imgANN, loader: DataLoader, ipcas: dict[str: Increment
                     f = features.detach().cpu().numpy()
                     features_list[layer_name].append(f)
                     ann.features[layer_name] = None
-                    print_wise(f"sub_batch shape {f.shape}", rank=rank)
+                    # print_wise(f"sub_batch shape {f.shape}", rank=rank)
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache() 
             end_forw = time.time()
