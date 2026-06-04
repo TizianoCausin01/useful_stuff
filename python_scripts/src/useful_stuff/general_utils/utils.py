@@ -1164,3 +1164,45 @@ def get_centroid(lagplot, max_lag, fs, min_peak_percent=None):
     centroid = np.where(denom > 0, num / denom, np.nan)  # no boolean indexing needed
 
     return centroid[0].item() if was_1d else centroid
+
+
+"""
+dtype_name
+Extracts the shared numpy/torch dtype name.
+INPUT:
+    - dtype_or_name: str | np.dtype | numpy dtype class | torch.dtype -> it can be a str (e.g. "numpy.uint8" or "uint8") or a dtype (e.g. np.uint8)
+OUTPUT:
+    - name: str -> dtype name, e.g. "float32"
+"""
+def dtype_name(dtype_or_name):
+    if isinstance(dtype_or_name, str):
+        return dtype_or_name.split(".")[-1]
+
+    if isinstance(dtype_or_name, np.dtype):
+        return dtype_or_name.name
+
+    if hasattr(dtype_or_name, "__name__"):
+        return dtype_or_name.__name__
+
+    return str(dtype_or_name).split(".")[-1]
+
+
+"""
+convert_dtype_by_name
+Converts a dtype/name to the requested numpy or torch dtype.
+INPUT:
+    - dtype_or_name: str | np.dtype | numpy dtype class | torch.dtype
+    - target: str -> "numpy" or "torch"
+OUTPUT:
+    - dtype -> dtype object from the requested package
+"""
+def convert_dtype_by_name(dtype_or_name, target):
+    name = dtype_name(dtype_or_name)
+
+    if target == "numpy":
+        return getattr(np, name)
+
+    if target == "torch":
+        return getattr(torch, name)
+
+    raise ValueError("target must be 'numpy' or 'torch'")
