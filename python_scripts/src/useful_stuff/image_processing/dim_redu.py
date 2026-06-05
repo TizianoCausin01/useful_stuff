@@ -2,6 +2,7 @@ import os, yaml, sys
 import numpy as np
 import torch
 import time
+import gc
 sys.path.append("../..")
 from useful_stuff.general_utils.utils import print_wise
 from useful_stuff.image_processing.computational_models import imgANN
@@ -43,7 +44,7 @@ def compute_img_ipca(ann: imgANN, loader: DataLoader, ipcas: dict[str: Increment
                         torch.cuda.empty_cache() 
             end_forw = time.time()
             print_wise(f"forward took {end_forw - st_forw}", rank=rank)
-            # Update each layer's iPCA with the current batch of activations.
+            # Transform each layer's activations with its SRP object.
             for layer_name in ann.features.keys():
                 st_ipca = time.time()
                 f_full = np.concatenate(features_list[layer_name], axis=0)
@@ -55,3 +56,44 @@ def compute_img_ipca(ann: imgANN, loader: DataLoader, ipcas: dict[str: Increment
             print_wise(f"Computed batch {idx}/{len(loader)-1} of {ann.model_name}: {list(ipcas.keys())}", rank=rank)
     return ipcas
 # EOF 
+
+
+"""
+compute_img_srp
+Transforms ANN image activations with one SparseRandomProjection object per target layer.
+INPUT:
+    - ann: imgANN -> model wrapper with hooks already registered for the target layers
+    - loader: DataLoader -> batches of transformed images and labels
+    - srps: dict[str, SparseRandomProjection] -> layer-name keyed SRP objects
+    - device: torch.device | str -> device where image batches are sent for the forward pass
+    - rank: int -> the rank of the process
+OUTPUT:
+    - f_redu: dict[str, np.ndarray] -> SRP-transformed activations for each layer
+"""
+def compute_img_srp(ann: imgANN, loader: DataLoader, srps: dict[str: SparseRandomProjection], device: torch, rank=0):
+    f_redu = {l: [] for l in srps.keys()}
+    with torch.no_grad():
+        # Forward each image batch and let imgANN hooks collect target-layer features.
+        for idx, (images, _) in enumerate(loader):
+            st_forw = time.time()
+            images = images.to(device)
+            ann.model(images)
+            end_forw = time.time()
+            print_wise(f"forward took {end_forw - st_forw}", rank=rank)
+            # Transform each layer's activations with its SRP object.
+            for layer, features in ann.features.items():
+                st_srp = time.time()
+                features = features.detach().cpu().numpy()
+                gc.collect()
+                torch.cuda.empty_cache()
+                print_wise(f"initial features shape {features.shape}")
+                f_redu[layer].append(srps[layer].transform(features))
+                end_srp = time.time()
+                print_wise(f"srp transform {layer} took {end_srp - st_srp}\n shape {f_redu[layer][-1].shape}", rank=rank)
+            print_wise(f"Computed batch {idx}/{len(loader)-1} of {ann.model_name}: {list(srps.keys())}", rank=rank)
+    # concatenate the list
+    for layer in f_redu.keys():
+        f_redu[layer] = np.concatenate(f_redu[layer], axis=0)
+        print_wise(f"tot shape {layer} {f_redu[layer].shape}")
+    return f_redu
+# EOF
