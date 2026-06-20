@@ -121,8 +121,14 @@ def create_RDM(data, metric='correlation'):
         RDM_vec = index_gram(RDM)
     elif metric == 'cosine':
         RDM_vec = cosine_sim(data)
-    elif metric == 'cosine_cnt':
+    elif metric == 'cosine_cnt': # removes the mean pattern (centers each feature independently)
         data = mean_centering(data)
+        RDM_vec = cosine_sim(data)
+    elif metric == 'cosine_mean_cnt': # removes the mean of the vector (centers each vector independently like for corr)
+        data = mean_centering(data, axis=0)
+        RDM_vec = cosine_sim(data)
+    elif metric == 'cosine_double_cnt': # removes both the mean pattern and the mean vector
+        data = double_centering(data)
         RDM_vec = cosine_sim(data)
     elif metric == 'magnitude_diff':
         RDM_vec = magnitude_diff(data)
@@ -670,10 +676,12 @@ def check_attributes(obj, *attrs):
         )
 
 def double_centering(G: np.ndarray, epsilon=10e-4) -> np.ndarray:
-    N = G.shape[0]
-    G_dcnt = (
-        -0.5 * (np.eye(N) - 1 / N * np.ones(N)).T @ G @ (np.eye(N) - 1 / N * np.ones(N))
-    )
+    if G.ndim != 2:
+        raise ValueError("G must be a 2D matrix")
+    n_rows, n_cols = G.shape
+    H_rows = np.eye(n_rows) - 1 / n_rows * np.ones((n_rows, n_rows))
+    H_cols = np.eye(n_cols) - 1 / n_cols * np.ones((n_cols, n_cols))
+    G_dcnt = -0.5 * H_rows @ G @ H_cols
     # to check if it's really centered
     control_double_centering(G_dcnt, epsilon)
     return G_dcnt
@@ -692,9 +700,11 @@ none
 
 """
 def control_double_centering(G_dcnt: np.ndarray, epsilon: float):
-    if any(np.abs(np.sum(G_dcnt, axis=0)) > epsilon) or any(
-        np.abs(np.sum(G_dcnt, axis=1)) > epsilon
-    ):
+    if G_dcnt.ndim != 2:
+        raise ValueError("G_dcnt must be a 2D matrix")
+    row_sums = np.sum(G_dcnt, axis=1)
+    col_sums = np.sum(G_dcnt, axis=0)
+    if np.any(np.abs(row_sums) > epsilon) or np.any(np.abs(col_sums) > epsilon):
         raise ValueError("the matrix isn't double-centered")
 # EOF
 
