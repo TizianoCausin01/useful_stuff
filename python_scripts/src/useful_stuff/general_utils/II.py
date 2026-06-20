@@ -118,27 +118,6 @@ class InformationImbalance(RSA):
 
 
 
-"""
-compare_similarity_metrics
-Compute Information Imbalance (II) between two similarity metrics to compute RDMs
-INPUT
-- data : np.ndarray (D, N) -> Input data used to compute both RDMs.
-- metric1, metric2 : str -> Similarity / distance metrics for signal and model RDMs.
-- k : int -> Number of nearest neighbors used for conditioning.
-
-OUTPUT:
-- ii_obj : InformationImbalance -> Initialized and fully computed InformationImbalance object.
-- ii_A2B : float -> Information Imbalance from metric1 to metric2.
-- ii_B2A : float -> Information Imbalance from metric2 to metric1.
-"""
-def compare_similarity_metrics(data: np.ndarray, metric1: str, metric2: str, k: int): 
-    ii_obj = InformationImbalance(metric1, metric2, k)
-    ii_obj.compute_RDM(data, "signal")
-    ii_obj.compute_RDM(data, "model")
-    ii_obj.compute_both_distance_ranks()
-    ii_A2B, ii_B2A = ii_obj.compute_both_II()
-    return ii_obj, ii_A2B, ii_B2A
-# EOF
 
 class dynInformationImbalance(InformationImbalance, dRSA):
     def __init__(self, 
